@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthService } from './auth.service';
 import { MeController } from './me.controller';
@@ -8,7 +9,7 @@ import { PermissionsService } from './permissions.service';
 import { SupabaseJwtGuard } from './supabase-jwt.guard';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [ConfigModule, PrismaModule],
   controllers: [MeController],
   providers: [
     AuthService,

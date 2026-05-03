@@ -1,9 +1,9 @@
-import type { DemoTripEvent } from '@/lib/demo-data';
+import type { OperationsTripEvent } from '@/lib/operations/view-model';
 import { tripEventSourceLabels, tripEventTypeLabels } from '@/lib/ui-labels';
 import { EventStatusBadge } from '@/components/status-badge';
 
 type TripTimelineProps = {
-  events: DemoTripEvent[];
+  events: OperationsTripEvent[];
   compact?: boolean;
 };
 

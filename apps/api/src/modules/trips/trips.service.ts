@@ -109,6 +109,101 @@ export class TripsService {
       where.currentStatus = query.status;
     }
 
+    if (query.borderGateId) {
+      where.borderGateId = query.borderGateId;
+    }
+
+    if (query.yardId) {
+      where.yardId = query.yardId;
+    }
+
+    if (query.driverProfileId) {
+      where.driverProfileId = query.driverProfileId;
+    }
+
+    if (query.vehicleId) {
+      where.vehicleId = query.vehicleId;
+    }
+
+    const plannedStartAt: Prisma.DateTimeNullableFilter = {};
+
+    if (query.from) {
+      plannedStartAt.gte = new Date(query.from);
+    }
+
+    if (query.to) {
+      plannedStartAt.lte = new Date(query.to);
+    }
+
+    if (plannedStartAt.gte || plannedStartAt.lte) {
+      if (plannedStartAt.gte && plannedStartAt.lte && plannedStartAt.gte > plannedStartAt.lte) {
+        throw new BadRequestException('From date must be before to date.');
+      }
+
+      where.plannedStartAt = plannedStartAt;
+    }
+
+    const search = query.search?.trim();
+
+    if (search) {
+      const containsSearch = {
+        contains: search,
+        mode: Prisma.QueryMode.insensitive
+      };
+
+      where.OR = [
+        {
+          tripCode: containsSearch
+        },
+        {
+          vehicle: {
+            is: {
+              plateNumber: containsSearch
+            }
+          }
+        },
+        {
+          driverProfile: {
+            is: {
+              phone: containsSearch
+            }
+          }
+        },
+        {
+          driverProfile: {
+            is: {
+              user: {
+                fullName: containsSearch
+              }
+            }
+          }
+        },
+        {
+          driverProfile: {
+            is: {
+              user: {
+                phone: containsSearch
+              }
+            }
+          }
+        },
+        {
+          borderGate: {
+            is: {
+              name: containsSearch
+            }
+          }
+        },
+        {
+          yard: {
+            is: {
+              name: containsSearch
+            }
+          }
+        }
+      ];
+    }
+
     const findArgs: Prisma.TripFindManyArgs = {
       where,
       take,

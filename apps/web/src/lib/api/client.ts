@@ -1,4 +1,4 @@
-import type { ApiEnvelope } from '@gatesync/shared';
+import type { ApiEnvelope, ApiErrorEnvelope, ApiSuccessEnvelope } from '@gatesync/shared';
 import { webEnv } from '@/lib/env';
 
 type RequestOptions = {
@@ -6,14 +6,33 @@ type RequestOptions = {
   headers?: HeadersInit;
 };
 
+export class ApiClientError extends Error {
+  code: string;
+  details?: unknown;
+  status?: number;
+
+  constructor(error: ApiErrorEnvelope['error'], status?: number) {
+    super(error.message);
+    this.name = 'ApiClientError';
+    this.code = error.code;
+    this.details = error.details;
+
+    if (status !== undefined) {
+      this.status = status;
+    }
+  }
+}
+
 async function request<TData>(
   path: string,
   init: RequestInit = {},
   options: RequestOptions = {}
-): Promise<ApiEnvelope<TData>> {
+): Promise<TData> {
   const headers = new Headers(options.headers);
 
-  headers.set('Content-Type', 'application/json');
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   if (options.accessToken) {
     headers.set('Authorization', `Bearer ${options.accessToken}`);
@@ -24,11 +43,28 @@ async function request<TData>(
     headers
   });
 
-  return response.json() as Promise<ApiEnvelope<TData>>;
+  const envelope = (await response.json()) as ApiEnvelope<TData>;
+
+  if ('error' in envelope) {
+    throw new ApiClientError(envelope.error, response.status);
+  }
+
+  if (!response.ok) {
+    throw new ApiClientError(
+      {
+        code: response.statusText || 'HTTP_ERROR',
+        message: 'Không thể kết nối API GateSync.'
+      },
+      response.status
+    );
+  }
+
+  return (envelope as ApiSuccessEnvelope<TData>).data;
 }
 
 export const apiClient = {
-  get: <TData>(path: string, options?: RequestOptions) => request<TData>(path, { method: 'GET' }, options),
+  get: <TData>(path: string, options?: RequestOptions) =>
+    request<TData>(path, { method: 'GET' }, options),
   post: <TData>(path: string, body: unknown, options?: RequestOptions) =>
     request<TData>(path, { method: 'POST', body: JSON.stringify(body) }, options),
   patch: <TData>(path: string, body: unknown, options?: RequestOptions) =>

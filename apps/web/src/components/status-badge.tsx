@@ -1,6 +1,5 @@
-import type { DemoTrip } from '@/lib/demo-data';
 import type { TripEventStatus, TripStatus } from '@gatesync/shared';
-import { getPriorityLabel } from '@/lib/demo-data';
+import type { OperationsPriority } from '@/lib/operations/view-model';
 import { tripEventStatusLabels, tripStatusLabels } from '@/lib/ui-labels';
 
 const tripStatusTones: Record<TripStatus, string> = {
@@ -25,10 +24,16 @@ const eventStatusTones: Record<TripEventStatus, string> = {
   CONFLICTING: 'bg-orange-100 text-orange-700 ring-orange-200'
 };
 
-const priorityTones: Record<DemoTrip['priority'], string> = {
+const priorityTones: Record<OperationsPriority, string> = {
   HIGH: 'bg-rose-100 text-rose-700 ring-rose-200',
   MEDIUM: 'bg-amber-100 text-amber-700 ring-amber-200',
   NORMAL: 'bg-slate-100 text-slate-700 ring-slate-200'
+};
+
+const priorityLabels: Record<OperationsPriority, string> = {
+  HIGH: 'Ưu tiên cao',
+  MEDIUM: 'Ưu tiên vừa',
+  NORMAL: 'Theo dõi thường'
 };
 
 type BadgeProps = {
@@ -37,7 +42,13 @@ type BadgeProps = {
 };
 
 function Badge({ children, className }: BadgeProps) {
-  return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ${className}`}>{children}</span>;
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ${className}`}
+    >
+      {children}
+    </span>
+  );
 }
 
 export function TripStatusBadge({ status }: { status: TripStatus }) {
@@ -48,6 +59,6 @@ export function EventStatusBadge({ status }: { status: TripEventStatus }) {
   return <Badge className={eventStatusTones[status]}>{tripEventStatusLabels[status]}</Badge>;
 }
 
-export function PriorityBadge({ priority }: { priority: DemoTrip['priority'] }) {
-  return <Badge className={priorityTones[priority]}>{getPriorityLabel(priority)}</Badge>;
+export function PriorityBadge({ priority }: { priority: OperationsPriority }) {
+  return <Badge className={priorityTones[priority]}>{priorityLabels[priority]}</Badge>;
 }

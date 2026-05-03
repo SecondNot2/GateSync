@@ -5,6 +5,7 @@ import type { PrismaService } from '../prisma/prisma.service';
 import type { RequestUser } from '../auth/request-user';
 import type { CreateTripEventDto } from './dto/create-trip-event.dto';
 import type { CreateTripDto } from './dto/create-trip.dto';
+import type { ListTripsQueryDto } from './dto/list-trips-query.dto';
 import { TripStateTransitionService } from './trip-state-transition.service';
 import { TripsService } from './trips.service';
 
@@ -25,6 +26,75 @@ const requestUser: RequestUser = {
 function createService(prisma: unknown): TripsService {
   return new TripsService(prisma as PrismaService, new TripStateTransitionService());
 }
+
+test('listTrips applies Sprint 3 filters and search with tenant scope', async () => {
+  type CapturedFindManyArgs = {
+    where?: Record<string, unknown>;
+    take?: number;
+    skip?: number;
+    cursor?: {
+      id: string;
+    };
+  };
+  let findArgs: CapturedFindManyArgs | undefined;
+  const prisma = {
+    trip: {
+      findMany: async (args: CapturedFindManyArgs) => {
+        findArgs = args;
+        return [];
+      }
+    }
+  };
+  const service = createService(prisma);
+  const query: ListTripsQueryDto = {
+    search: '29H',
+    status: 'IN_YARD',
+    borderGateId: '00000000-0000-4000-8000-000000000014',
+    yardId: '00000000-0000-4000-8000-000000000015',
+    driverProfileId: '00000000-0000-4000-8000-000000000011',
+    vehicleId: '00000000-0000-4000-8000-000000000010',
+    from: '2026-05-01T00:00:00.000Z',
+    to: '2026-05-31T23:59:59.999Z',
+    limit: 25,
+    cursor: 'trip-cursor'
+  };
+
+  await service.listTrips('org-1', query);
+
+  const where = findArgs?.where as {
+    organizationId: string;
+    deletedAt: null;
+    currentStatus: string;
+    borderGateId: string;
+    yardId: string;
+    driverProfileId: string;
+    vehicleId: string;
+    plannedStartAt: {
+      gte?: Date;
+      lte?: Date;
+    };
+    OR: Array<Record<string, unknown>>;
+  };
+  assert.equal(findArgs?.take, 25);
+  assert.equal(findArgs?.skip, 1);
+  assert.deepEqual(findArgs?.cursor, { id: 'trip-cursor' });
+  assert.equal(where.organizationId, 'org-1');
+  assert.equal(where.deletedAt, null);
+  assert.equal(where.currentStatus, 'IN_YARD');
+  assert.equal(where.borderGateId, query.borderGateId);
+  assert.equal(where.yardId, query.yardId);
+  assert.equal(where.driverProfileId, query.driverProfileId);
+  assert.equal(where.vehicleId, query.vehicleId);
+  assert.equal(where.plannedStartAt.gte?.toISOString(), query.from);
+  assert.equal(where.plannedStartAt.lte?.toISOString(), query.to);
+  assert.equal(where.OR.length, 7);
+  assert.deepEqual(where.OR[0], {
+    tripCode: {
+      contains: '29H',
+      mode: 'insensitive'
+    }
+  });
+});
 
 test('createTrip creates a trip, owner participant, TRIP_CREATED event and audit in one transaction', async () => {
   const createdParticipants: Record<string, unknown>[] = [];

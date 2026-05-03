@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { demoOrganization } from '@/lib/demo-data';
+import type { OperationsOrganizationContext } from '@/lib/operations/view-model';
 import { organizationTypeLabels } from '@/lib/ui-labels';
 
 type AppNavKey = 'dashboard' | 'trips' | 'admin';
@@ -12,14 +12,9 @@ type AppShellProps = {
   title: string;
   description: string;
   action?: ReactNode;
+  organization?: OperationsOrganizationContext;
   children: ReactNode;
 };
-
-const navItems: Array<{ key: AppNavKey; label: string; href: string; badge?: string }> = [
-  { key: 'dashboard', label: 'Bảng điều phối', href: '/dashboard' },
-  { key: 'trips', label: 'Quản lý chuyến', href: '/trips', badge: '128' },
-  { key: 'admin', label: 'Quản trị nội bộ', href: '/admin' }
-];
 
 export function AppShell({
   activeNav,
@@ -27,8 +22,30 @@ export function AppShell({
   title,
   description,
   action,
+  organization,
   children
 }: AppShellProps) {
+  const currentOrganization = organization ?? {
+    name: 'Tổ chức vận hành',
+    type: 'LOGISTICS_COMPANY',
+    controlScore: '--'
+  };
+  const tripsNavItem: { key: AppNavKey; label: string; href: string; badge?: string } = {
+    key: 'trips',
+    label: 'Quản lý chuyến',
+    href: '/trips'
+  };
+
+  if (currentOrganization.tripBadge) {
+    tripsNavItem.badge = currentOrganization.tripBadge;
+  }
+
+  const navItems: Array<{ key: AppNavKey; label: string; href: string; badge?: string }> = [
+    { key: 'dashboard', label: 'Bảng điều phối', href: '/dashboard' },
+    tripsNavItem,
+    { key: 'admin', label: 'Quản trị nội bộ', href: '/admin' }
+  ];
+
   return (
     <main className="min-h-screen px-3 pb-24 pt-3 text-slate-950 sm:px-6 sm:pb-6 lg:px-8">
       <div className="mx-auto grid max-w-[90rem] gap-4 lg:grid-cols-[17rem_1fr]">
@@ -44,14 +61,14 @@ export function AppShell({
             />
             <div className="min-w-0">
               <p className="truncate text-sm font-bold text-slate-950">GateSync</p>
-              <p className="truncate text-xs text-slate-500">{demoOrganization.name}</p>
+              <p className="truncate text-xs text-slate-500">{currentOrganization.name}</p>
             </div>
           </Link>
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-right">
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-700">
               Kiểm soát
             </p>
-            <p className="text-sm font-bold text-emerald-700">{demoOrganization.controlScore}</p>
+            <p className="text-sm font-bold text-emerald-700">{currentOrganization.controlScore}</p>
           </div>
         </header>
 
@@ -75,9 +92,9 @@ export function AppShell({
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
               Tổ chức
             </p>
-            <p className="mt-2 text-sm font-semibold text-slate-950">{demoOrganization.name}</p>
+            <p className="mt-2 text-sm font-semibold text-slate-950">{currentOrganization.name}</p>
             <p className="mt-1 text-xs text-slate-500">
-              {organizationTypeLabels[demoOrganization.type]}
+              {organizationTypeLabels[currentOrganization.type]}
             </p>
           </div>
 
@@ -139,7 +156,7 @@ export function AppShell({
                     Điểm kiểm soát
                   </p>
                   <p className="mt-1 text-2xl font-bold text-emerald-600">
-                    {demoOrganization.controlScore}
+                    {currentOrganization.controlScore}
                   </p>
                 </div>
                 {action}
