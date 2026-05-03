@@ -1,0 +1,15 @@
+{
+  "name": "@gatesync/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "tsconfig"
+  ],
+  "scripts": {
+    "build": "echo \"No build required for @gatesync/config\"",
+    "lint": "echo \"No lint required for @gatesync/config\"",
+    "typecheck": "echo \"No typecheck required for @gatesync/config\"",
+    "test": "echo \"No tests configured for @gatesync/config\""
+  }
+}

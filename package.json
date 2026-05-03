@@ -1,0 +1,30 @@
+{
+  "name": "gatesync",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "pnpm --stream --parallel --filter @gatesync/web --filter @gatesync/api dev",
+    "dev:web": "pnpm --filter @gatesync/web dev",
+    "dev:api": "pnpm --filter @gatesync/api dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "format": "prettier --write .",
+    "db:generate": "pnpm --filter @gatesync/database db:generate",
+    "db:migrate": "pnpm --filter @gatesync/database db:migrate",
+    "db:deploy": "pnpm --filter @gatesync/database db:deploy",
+    "db:seed": "pnpm --filter @gatesync/database db:seed"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@next/eslint-plugin-next": "^15.1.6",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  }
+}

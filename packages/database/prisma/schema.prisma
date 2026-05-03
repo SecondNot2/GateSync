@@ -1,0 +1,527 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum OrganizationType {
+  LOGISTICS_COMPANY
+  CARGO_OWNER
+  CUSTOMS_AGENT
+  TRANSPORT_COMPANY
+  YARD_OPERATOR
+  OTHER
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  DISPATCHER
+  DOCUMENT_STAFF
+  FIELD_OPERATOR
+  VIEWER
+  BILLING_ADMIN
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  REMOVED
+}
+
+enum VehicleType {
+  TRUCK
+  TRACTOR_HEAD
+  TRAILER
+  CONTAINER_TRUCK
+  VAN
+  OTHER
+}
+
+enum OwnershipType {
+  OWNED
+  LEASED
+  PARTNER
+  CUSTOMER
+  OTHER
+}
+
+enum TripType {
+  EXPORT_WITH_GOODS
+  IMPORT_WITH_GOODS
+  EMPTY_VEHICLE_ENTRY
+  EMPTY_VEHICLE_EXIT
+  YARD_ONLY
+  INTERNAL_TRANSFER
+}
+
+enum TripDirection {
+  EXPORT
+  IMPORT
+  DOMESTIC
+  UNKNOWN
+}
+
+enum TripStatus {
+  PLANNED
+  IN_PROGRESS
+  WAITING_YARD_ENTRY
+  IN_YARD
+  AT_BORDER_GATE
+  CUSTOMS_PROCESSING
+  INSPECTION_REQUIRED
+  BLOCKED
+  DELAYED
+  COMPLETED
+  CANCELLED
+}
+
+enum TripParticipantRole {
+  OWNER_ORG
+  DRIVER
+  CARGO_OWNER
+  CUSTOMS_AGENT
+  FIELD_OPERATOR
+  VIEWER
+}
+
+enum VisibilityLevel {
+  FULL
+  OPERATIONAL
+  MILESTONE_ONLY
+  LIMITED
+}
+
+enum TripEventType {
+  TRIP_CREATED
+  VEHICLE_ASSIGNED
+  DRIVER_ASSIGNED
+  DEPARTED
+  ARRIVED_BORDER_AREA
+  WAITING_YARD_ENTRY
+  YARD_ENTRY_CONFIRMED
+  DRIVER_REPORTED_YARD_ENTRY
+  YARD_EXIT_CONFIRMED
+  DRIVER_REPORTED_GATE_ENTRY
+  DECLARATION_SUBMITTED
+  DECLARATION_APPROVED
+  DECLARATION_REJECTED
+  BORDER_GATE_ENTRY_CONFIRMED
+  CUSTOMS_PROCESSING
+  INSPECTION_REQUIRED
+  INSPECTION_COMPLETED
+  FEE_PAID
+  BORDER_GATE_EXIT_CONFIRMED
+  PROOF_IMAGE_UPLOADED
+  DRIVER_NOTE_ADDED
+  TRIP_CANCELLED
+  TRIP_COMPLETED
+}
+
+enum TripEventStatus {
+  RECORDED
+  CONFIRMED
+  REJECTED
+  CORRECTED
+  CONFLICTING
+}
+
+enum TripEventSource {
+  MANUAL
+  DRIVER_APP
+  IMPORT
+  CUA_KHAU_SO
+  XUAN_CUONG
+  GPS
+  SYSTEM
+  AI_ASSISTANT
+}
+
+enum IntegrationProvider {
+  CUA_KHAU_SO
+  XUAN_CUONG
+  GPS_PROVIDER
+  ZALO_OA
+  EMAIL
+  SMS
+  MOCK
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  DISABLED
+  ERROR
+  PENDING
+}
+
+enum NotificationChannel {
+  EMAIL
+  IN_APP
+  ZALO_OA
+  SMS
+  WEBHOOK
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+enum DeclarationType {
+  EXPORT
+  IMPORT
+  TRANSIT
+  OTHER
+}
+
+enum DeclarationStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model Organization {
+  id                   String               @id @default(uuid()) @db.Uuid
+  name                 String
+  type                 OrganizationType     @default(LOGISTICS_COMPANY)
+  taxCode              String?
+  phone                String?
+  email                String?
+  address              String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  deletedAt            DateTime?
+  deletedById          String?              @db.Uuid
+  memberships          Membership[]
+  vehicles             Vehicle[]
+  shipments            Shipment[]           @relation("OwningOrganizationShipments")
+  cargoOwnerShipments  Shipment[]           @relation("CargoOwnerShipments")
+  customsDeclarations  CustomsDeclaration[]
+  trips                Trip[]
+  tripParticipants     TripParticipant[]
+  tripEvents           TripEvent[]
+  integrationAccounts  IntegrationAccount[]
+  notificationRules    NotificationRule[]
+  notifications        Notification[]
+  auditLogs            AuditLog[]
+
+  @@index([type])
+  @@index([taxCode])
+  @@map("organizations")
+}
+
+model User {
+  id                 String            @id @default(uuid()) @db.Uuid
+  supabaseUserId     String            @unique
+  fullName           String?
+  phone              String?
+  email              String?           @unique
+  avatarUrl          String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  memberships        Membership[]
+  driverProfile      DriverProfile?
+  createdTrips       Trip[]            @relation("TripCreatedBy")
+  tripParticipants   TripParticipant[]
+  tripEvents         TripEvent[]       @relation("TripEventCreatedBy")
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+
+  @@index([supabaseUserId])
+  @@index([phone])
+  @@map("users")
+}
+
+model Membership {
+  id              String             @id @default(uuid()) @db.Uuid
+  organizationId  String             @db.Uuid
+  userId          String             @db.Uuid
+  role            MembershipRole
+  status          MembershipStatus   @default(ACTIVE)
+  createdAt       DateTime           @default(now())
+  deletedAt       DateTime?
+  deletedById     String?            @db.Uuid
+  organization    Organization       @relation(fields: [organizationId], references: [id])
+  user            User               @relation(fields: [userId], references: [id])
+
+  @@unique([organizationId, userId])
+  @@index([userId, organizationId])
+  @@index([organizationId, role, status])
+  @@map("memberships")
+}
+
+model DriverProfile {
+  id                 String     @id @default(uuid()) @db.Uuid
+  userId             String     @unique @db.Uuid
+  licenseNumber      String?
+  phone              String?
+  identityVerifiedAt DateTime?
+  createdAt          DateTime   @default(now())
+  deletedAt          DateTime?
+  deletedById        String?    @db.Uuid
+  user               User       @relation(fields: [userId], references: [id])
+  vehicles           Vehicle[]
+  trips              Trip[]
+
+  @@index([phone])
+  @@index([licenseNumber])
+  @@map("driver_profiles")
+}
+
+model Vehicle {
+  id                String          @id @default(uuid()) @db.Uuid
+  organizationId    String          @db.Uuid
+  plateNumber       String
+  vehicleType       VehicleType
+  ownershipType     OwnershipType   @default(OWNED)
+  defaultDriverId   String?         @db.Uuid
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  deletedAt         DateTime?
+  deletedById       String?         @db.Uuid
+  organization      Organization    @relation(fields: [organizationId], references: [id])
+  defaultDriver     DriverProfile?  @relation(fields: [defaultDriverId], references: [id])
+  trips             Trip[]
+
+  @@unique([organizationId, plateNumber])
+  @@index([organizationId, vehicleType])
+  @@map("vehicles")
+}
+
+model BorderGate {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @unique
+  province     String?
+  countrySide  String?
+  isActive     Boolean  @default(true)
+  yards        Yard[]
+  trips        Trip[]
+
+  @@index([isActive])
+  @@map("border_gates")
+}
+
+model Yard {
+  id            String      @id @default(uuid()) @db.Uuid
+  name          String
+  borderGateId  String      @db.Uuid
+  operatorName  String?
+  address       String?
+  isActive      Boolean     @default(true)
+  borderGate    BorderGate  @relation(fields: [borderGateId], references: [id])
+  trips         Trip[]
+
+  @@unique([borderGateId, name])
+  @@index([borderGateId, isActive])
+  @@map("yards")
+}
+
+model Shipment {
+  id                         String        @id @default(uuid()) @db.Uuid
+  organizationId             String        @db.Uuid
+  cargoOwnerOrganizationId   String?       @db.Uuid
+  description                String?
+  commodityCode              String?
+  quantity                   Decimal?      @db.Decimal(18, 3)
+  unit                       String?
+  weightKg                   Decimal?      @db.Decimal(18, 3)
+  containerNumber            String?
+  sealNumber                 String?
+  createdAt                  DateTime      @default(now())
+  organization               Organization  @relation("OwningOrganizationShipments", fields: [organizationId], references: [id])
+  cargoOwnerOrganization     Organization? @relation("CargoOwnerShipments", fields: [cargoOwnerOrganizationId], references: [id])
+  trips                      Trip[]
+
+  @@index([organizationId])
+  @@index([cargoOwnerOrganizationId])
+  @@index([containerNumber])
+  @@map("shipments")
+}
+
+model CustomsDeclaration {
+  id                   String             @id @default(uuid()) @db.Uuid
+  organizationId       String             @db.Uuid
+  declarationNumber    String
+  declarationType      DeclarationType
+  customsOfficeCode    String?
+  status               DeclarationStatus  @default(DRAFT)
+  submittedAt          DateTime?
+  approvedAt           DateTime?
+  rejectedAt           DateTime?
+  createdAt            DateTime           @default(now())
+  organization         Organization       @relation(fields: [organizationId], references: [id])
+  trips                Trip[]
+
+  @@unique([organizationId, declarationNumber])
+  @@index([organizationId, status])
+  @@map("customs_declarations")
+}
+
+model Trip {
+  id                       String               @id @default(uuid()) @db.Uuid
+  organizationId           String               @db.Uuid
+  tripCode                 String
+  tripType                 TripType
+  direction                TripDirection        @default(UNKNOWN)
+  vehicleId                String?              @db.Uuid
+  driverProfileId          String?              @db.Uuid
+  shipmentId               String?              @db.Uuid
+  customsDeclarationId     String?              @db.Uuid
+  borderGateId             String?              @db.Uuid
+  yardId                   String?              @db.Uuid
+  plannedStartAt           DateTime?
+  plannedArrivalAt         DateTime?
+  currentStatus            TripStatus           @default(PLANNED)
+  currentStatusUpdatedAt   DateTime?
+  createdById              String?              @db.Uuid
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
+  deletedAt                DateTime?
+  deletedById              String?              @db.Uuid
+  organization             Organization         @relation(fields: [organizationId], references: [id])
+  vehicle                  Vehicle?             @relation(fields: [vehicleId], references: [id])
+  driverProfile            DriverProfile?       @relation(fields: [driverProfileId], references: [id])
+  shipment                 Shipment?            @relation(fields: [shipmentId], references: [id])
+  customsDeclaration       CustomsDeclaration?  @relation(fields: [customsDeclarationId], references: [id])
+  borderGate               BorderGate?          @relation(fields: [borderGateId], references: [id])
+  yard                     Yard?                @relation(fields: [yardId], references: [id])
+  createdBy                User?                @relation("TripCreatedBy", fields: [createdById], references: [id])
+  participants             TripParticipant[]
+  events                   TripEvent[]
+  notifications            Notification[]
+
+  @@unique([organizationId, tripCode])
+  @@index([organizationId, currentStatus, plannedStartAt])
+  @@index([driverProfileId, currentStatus])
+  @@index([vehicleId, currentStatus])
+  @@map("trips")
+}
+
+model TripParticipant {
+  id               String               @id @default(uuid()) @db.Uuid
+  tripId           String               @db.Uuid
+  organizationId   String?              @db.Uuid
+  userId           String?              @db.Uuid
+  role             TripParticipantRole
+  visibilityLevel  VisibilityLevel      @default(OPERATIONAL)
+  createdAt        DateTime             @default(now())
+  trip             Trip                 @relation(fields: [tripId], references: [id])
+  organization     Organization?        @relation(fields: [organizationId], references: [id])
+  user             User?                @relation(fields: [userId], references: [id])
+
+  @@index([tripId, role])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("trip_participants")
+}
+
+model TripEvent {
+  id              String            @id @default(uuid()) @db.Uuid
+  tripId          String            @db.Uuid
+  organizationId  String            @db.Uuid
+  eventType       TripEventType
+  eventStatus     TripEventStatus   @default(RECORDED)
+  source          TripEventSource
+  sourceRef       String?
+  idempotencyKey  String?
+  occurredAt      DateTime
+  recordedAt      DateTime          @default(now())
+  createdById     String?           @db.Uuid
+  confidence      Decimal?          @db.Decimal(5, 2)
+  note            String?
+  rawPayload      Json?
+  trip            Trip              @relation(fields: [tripId], references: [id])
+  organization    Organization      @relation(fields: [organizationId], references: [id])
+  createdBy       User?             @relation("TripEventCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([idempotencyKey])
+  @@index([tripId, occurredAt])
+  @@index([organizationId, eventType, occurredAt])
+  @@index([source, sourceRef])
+  @@map("trip_events")
+}
+
+model IntegrationAccount {
+  id                    String                @id @default(uuid()) @db.Uuid
+  organizationId        String                @db.Uuid
+  provider              IntegrationProvider
+  displayName           String
+  status                IntegrationStatus     @default(PENDING)
+  encryptedCredentials  String?
+  lastSyncAt            DateTime?
+  createdAt             DateTime              @default(now())
+  deletedAt             DateTime?
+  deletedById           String?               @db.Uuid
+  organization          Organization          @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, provider, displayName])
+  @@index([organizationId, provider])
+  @@map("integration_accounts")
+}
+
+model NotificationRule {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  organizationId      String                 @db.Uuid
+  name                String
+  eventType           TripEventType?
+  condition           Json?
+  channels            NotificationChannel[]
+  recipientStrategy   Json?
+  isActive            Boolean                @default(true)
+  organization        Organization           @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, isActive])
+  @@map("notification_rules")
+}
+
+model Notification {
+  id                String               @id @default(uuid()) @db.Uuid
+  organizationId    String               @db.Uuid
+  tripId            String?              @db.Uuid
+  recipientUserId   String?              @db.Uuid
+  channel           NotificationChannel
+  status            NotificationStatus   @default(PENDING)
+  payload           Json?
+  sentAt            DateTime?
+  failedAt          DateTime?
+  readAt            DateTime?
+  errorMessage      String?
+  createdAt         DateTime             @default(now())
+  organization      Organization         @relation(fields: [organizationId], references: [id])
+  trip              Trip?                @relation(fields: [tripId], references: [id])
+  recipientUser     User?                @relation(fields: [recipientUserId], references: [id])
+
+  @@index([recipientUserId, status, createdAt])
+  @@index([organizationId, status])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id              String        @id @default(uuid()) @db.Uuid
+  organizationId  String?       @db.Uuid
+  actorUserId     String?       @db.Uuid
+  action          String
+  entityType      String
+  entityId        String?
+  before          Json?
+  after           Json?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime      @default(now())
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  actorUser       User?         @relation(fields: [actorUserId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
