@@ -3,11 +3,15 @@ import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { verify, type JwtPayload } from 'jsonwebtoken';
 import type { Request } from 'express';
-import type { AuthenticatedRequest, RequestUser } from './request-user';
+import { AuthService } from './auth.service';
+import type { AuthenticatedRequest } from './request-user';
 
 @Injectable()
 export class SupabaseJwtGuard implements CanActivate {
-  constructor(@Inject(ConfigService) private readonly configService: ConfigService) {}
+  constructor(
+    @Inject(ConfigService) private readonly configService: ConfigService,
+    @Inject(AuthService) private readonly authService: AuthService
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
@@ -24,26 +28,7 @@ export class SupabaseJwtGuard implements CanActivate {
     }
 
     const payload = await this.verifyToken(token, secret);
-    const subject = payload.sub;
-
-    if (!subject) {
-      throw new UnauthorizedException('Invalid Supabase token subject.');
-    }
-
-    const requestUser: RequestUser = {
-      supabaseUserId: subject,
-      claims: payload as Record<string, unknown>
-    };
-
-    if (typeof payload.email === 'string') {
-      requestUser.email = payload.email;
-    }
-
-    if (typeof payload.role === 'string') {
-      requestUser.role = payload.role;
-    }
-
-    request.user = requestUser;
+    request.user = await this.authService.resolveRequestUser(payload);
 
     return true;
   }

@@ -1,10 +1,27 @@
 import { Module } from '@nestjs/common';
+import { PrismaModule } from '../prisma/prisma.module';
+import { AuthService } from './auth.service';
 import { MeController } from './me.controller';
+import { OrganizationMembershipGuard } from './organization-membership.guard';
+import { OrganizationRolesGuard } from './organization-roles.guard';
+import { PermissionsService } from './permissions.service';
 import { SupabaseJwtGuard } from './supabase-jwt.guard';
 
 @Module({
+  imports: [PrismaModule],
   controllers: [MeController],
-  providers: [SupabaseJwtGuard],
-  exports: [SupabaseJwtGuard]
+  providers: [
+    AuthService,
+    SupabaseJwtGuard,
+    PermissionsService,
+    OrganizationMembershipGuard,
+    OrganizationRolesGuard
+  ],
+  exports: [
+    SupabaseJwtGuard,
+    PermissionsService,
+    OrganizationMembershipGuard,
+    OrganizationRolesGuard
+  ]
 })
 export class AuthModule {}

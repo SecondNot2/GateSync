@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AuthModule } from './modules/auth/auth.module';
+import { OrganizationsModule } from './modules/organizations/organizations.module';
+import { PrismaModule } from './modules/prisma/prisma.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
 
@@ -11,7 +13,9 @@ import { ApiResponseInterceptor } from './common/interceptors/api-response.inter
     ConfigModule.forRoot({
       isGlobal: true
     }),
-    AuthModule
+    PrismaModule,
+    AuthModule,
+    OrganizationsModule
   ],
   controllers: [AppController],
   providers: [

@@ -1,34 +1,145 @@
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
+const demoOrganizationId = '00000000-0000-4000-8000-000000000001';
+const demoUserId = '00000000-0000-4000-8000-000000000002';
 
 async function main() {
-  await prisma.borderGate.upsert({
-    where: { name: 'Huu Nghi' },
-    update: {},
+  await prisma.user.upsert({
+    where: { supabaseUserId: 'gatesync-demo-owner' },
+    update: {
+      email: 'owner@gatesync.local',
+      fullName: 'Lê Minh Anh',
+      phone: '0988000001'
+    },
     create: {
-      name: 'Huu Nghi',
-      province: 'Lang Son',
-      countrySide: 'VN_CN',
-      yards: {
-        create: [
-          {
-            name: 'Huu Nghi Staging Yard',
-            operatorName: 'GateSync Demo',
-            address: 'Lang Son'
-          }
-        ]
+      id: demoUserId,
+      supabaseUserId: 'gatesync-demo-owner',
+      email: 'owner@gatesync.local',
+      fullName: 'Lê Minh Anh',
+      phone: '0988000001'
+    }
+  });
+
+  await prisma.organization.upsert({
+    where: { id: demoOrganizationId },
+    update: {
+      name: 'Công ty Logistics Hữu Nghị',
+      type: 'LOGISTICS_COMPANY',
+      taxCode: '0109988776',
+      phone: '+84988123456',
+      email: 'ops@gatesync.local',
+      address: 'Lạng Sơn, Việt Nam'
+    },
+    create: {
+      id: demoOrganizationId,
+      name: 'Công ty Logistics Hữu Nghị',
+      type: 'LOGISTICS_COMPANY',
+      taxCode: '0109988776',
+      phone: '+84988123456',
+      email: 'ops@gatesync.local',
+      address: 'Lạng Sơn, Việt Nam'
+    }
+  });
+
+  await prisma.membership.upsert({
+    where: {
+      organizationId_userId: {
+        organizationId: demoOrganizationId,
+        userId: demoUserId
       }
+    },
+    update: {
+      role: 'OWNER',
+      status: 'ACTIVE'
+    },
+    create: {
+      organizationId: demoOrganizationId,
+      userId: demoUserId,
+      role: 'OWNER',
+      status: 'ACTIVE'
+    }
+  });
+
+  const huuNghi = await prisma.borderGate.upsert({
+    where: { name: 'Hữu Nghị' },
+    update: {
+      province: 'Lạng Sơn',
+      countrySide: 'VN_CN',
+      isActive: true
+    },
+    create: {
+      name: 'Hữu Nghị',
+      province: 'Lạng Sơn',
+      countrySide: 'VN_CN'
     }
   });
 
   await prisma.borderGate.upsert({
-    where: { name: 'Tan Thanh' },
-    update: {},
+    where: { name: 'Tân Thanh' },
+    update: {
+      province: 'Lạng Sơn',
+      countrySide: 'VN_CN',
+      isActive: true
+    },
     create: {
-      name: 'Tan Thanh',
-      province: 'Lang Son',
+      name: 'Tân Thanh',
+      province: 'Lạng Sơn',
       countrySide: 'VN_CN'
+    }
+  });
+
+  const chiMa = await prisma.borderGate.upsert({
+    where: { name: 'Chi Ma' },
+    update: {
+      province: 'Lạng Sơn',
+      countrySide: 'VN_CN',
+      isActive: true
+    },
+    create: {
+      name: 'Chi Ma',
+      province: 'Lạng Sơn',
+      countrySide: 'VN_CN'
+    }
+  });
+
+  await prisma.yard.upsert({
+    where: {
+      borderGateId_name: {
+        borderGateId: huuNghi.id,
+        name: 'Bãi Xuân Cương'
+      }
+    },
+    update: {
+      operatorName: 'Xuân Cương',
+      address: 'Khu vực cửa khẩu Hữu Nghị',
+      isActive: true
+    },
+    create: {
+      borderGateId: huuNghi.id,
+      name: 'Bãi Xuân Cương',
+      operatorName: 'Xuân Cương',
+      address: 'Khu vực cửa khẩu Hữu Nghị'
+    }
+  });
+
+  await prisma.yard.upsert({
+    where: {
+      borderGateId_name: {
+        borderGateId: chiMa.id,
+        name: 'Bãi Chi Ma 01'
+      }
+    },
+    update: {
+      operatorName: 'GateSync Demo',
+      address: 'Khu vực cửa khẩu Chi Ma',
+      isActive: true
+    },
+    create: {
+      borderGateId: chiMa.id,
+      name: 'Bãi Chi Ma 01',
+      operatorName: 'GateSync Demo',
+      address: 'Khu vực cửa khẩu Chi Ma'
     }
   });
 }

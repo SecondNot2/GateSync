@@ -8,6 +8,7 @@ node_modules/
 .next/
 out/
 dist/
+dist-test/
 build/
 coverage/
 .turbo/
