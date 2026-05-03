@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
+import { TripsModule } from './modules/trips/trips.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
 
@@ -15,7 +16,8 @@ import { ApiResponseInterceptor } from './common/interceptors/api-response.inter
     }),
     PrismaModule,
     AuthModule,
-    OrganizationsModule
+    OrganizationsModule,
+    TripsModule
   ],
   controllers: [AppController],
   providers: [
