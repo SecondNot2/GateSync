@@ -1,3 +1,5 @@
+import Image from 'next/image';
+
 const stats = [
   { label: 'Active trips', value: '128' },
   { label: 'Border delays', value: '14' },
@@ -17,11 +19,18 @@ export default function HomePage() {
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 py-8 sm:px-10 lg:px-12">
       <header className="flex items-center justify-between rounded-full border border-white/70 bg-white/75 px-5 py-3 shadow-soft backdrop-blur">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">
-            GS
-          </div>
+          <Image
+            src="/gs-logo.png"
+            alt="GateSync logo"
+            width={40}
+            height={40}
+            priority
+            className="h-10 w-10 rounded-full bg-slate-950 object-cover"
+          />
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-sky-600">GateSync</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-sky-600">
+              GateSync
+            </p>
             <p className="text-xs text-slate-500">Border logistics control tower</p>
           </div>
         </div>
@@ -39,8 +48,9 @@ export default function HomePage() {
             Coordinate border trips through trusted events, not fragile status updates.
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-            GateSync starts with internal logistics teams: dispatchers, document staff, field operators,
-            drivers, vehicles, trips, yards, border-gate milestones, notifications, and integrations.
+            GateSync starts with internal logistics teams: dispatchers, document staff, field
+            operators, drivers, vehicles, trips, yards, border-gate milestones, notifications, and
+            integrations.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <a
