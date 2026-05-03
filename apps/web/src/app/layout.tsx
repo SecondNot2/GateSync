@@ -3,17 +3,17 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'GateSync',
-  description: 'Border logistics control tower for enterprise operations',
+  description: 'Tháp điều phối logistics cửa khẩu cho vận hành doanh nghiệp',
   icons: {
-    icon: '/favicon.png',
-    shortcut: '/favicon.png',
-    apple: '/apple-touch-icon.png'
+    icon: '/gs-logo.png',
+    shortcut: '/gs-logo.png',
+    apple: '/gs-logo.png'
   }
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="vi">
       <body>{children}</body>
     </html>
   );
