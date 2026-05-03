@@ -1,0 +1,80 @@
+name: Continuous Delivery
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gatesync-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-artifacts:
+    name: Build delivery artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      CI: true
+      NEXT_TELEMETRY_DISABLED: 1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Build workspace
+        run: pnpm build
+
+      - name: Upload web build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gatesync-web-build
+          path: |
+            apps/web/.next
+            apps/web/public
+            apps/web/package.json
+            apps/web/next.config.ts
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload API build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gatesync-api-build
+          path: |
+            apps/api/dist
+            apps/api/package.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload package build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gatesync-package-builds
+          path: |
+            packages/shared/dist
+            packages/database/dist
+          if-no-files-found: error
+          retention-days: 7
