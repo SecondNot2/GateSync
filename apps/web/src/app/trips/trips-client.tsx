@@ -1,6 +1,6 @@
 'use client';
 
-import { tripStatuses, type TripStatus } from '@gatesync/shared';
+import { tripExceptionFilters, tripStatuses, type TripExceptionFilter, type TripStatus } from '@gatesync/shared';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { FormEvent } from 'react';
@@ -10,7 +10,13 @@ import { PriorityBadge, TripStatusBadge } from '@/components/status-badge';
 import type { ListTripsParams } from '@/lib/api/types';
 import { loadTripsData } from '@/lib/operations/data';
 import type { TripsViewData } from '@/lib/operations/view-model';
-import { formatDelay, tripDirectionLabels, tripStatusLabels, tripTypeLabels } from '@/lib/ui-labels';
+import {
+  formatDelay,
+  tripDirectionLabels,
+  tripExceptionFilterLabels,
+  tripStatusLabels,
+  tripTypeLabels
+} from '@/lib/ui-labels';
 
 export function TripsClient() {
   const router = useRouter();
@@ -24,6 +30,12 @@ export function TripsClient() {
   const [status, setStatus] = useState(filters.status ?? '');
   const [borderGateId, setBorderGateId] = useState(filters.borderGateId ?? '');
   const [yardId, setYardId] = useState(filters.yardId ?? '');
+  const [driverProfileId, setDriverProfileId] = useState(filters.driverProfileId ?? '');
+  const [vehicleId, setVehicleId] = useState(filters.vehicleId ?? '');
+  const [cargoOwnerOrganizationId, setCargoOwnerOrganizationId] = useState(
+    filters.cargoOwnerOrganizationId ?? ''
+  );
+  const [exception, setException] = useState(filters.exception ?? '');
   const [from, setFrom] = useState(toDateInputValue(filters.from));
   const [to, setTo] = useState(toDateInputValue(filters.to));
   const shellProps = data?.organization ? { organization: data.organization } : {};
@@ -34,6 +46,10 @@ export function TripsClient() {
     setStatus(filters.status ?? '');
     setBorderGateId(filters.borderGateId ?? '');
     setYardId(filters.yardId ?? '');
+    setDriverProfileId(filters.driverProfileId ?? '');
+    setVehicleId(filters.vehicleId ?? '');
+    setCargoOwnerOrganizationId(filters.cargoOwnerOrganizationId ?? '');
+    setException(filters.exception ?? '');
     setFrom(toDateInputValue(filters.from));
     setTo(toDateInputValue(filters.to));
   }, [filters]);
@@ -87,6 +103,22 @@ export function TripsClient() {
 
     if (yardId.trim()) {
       nextParams.set('yardId', yardId.trim());
+    }
+
+    if (driverProfileId.trim()) {
+      nextParams.set('driverProfileId', driverProfileId.trim());
+    }
+
+    if (vehicleId.trim()) {
+      nextParams.set('vehicleId', vehicleId.trim());
+    }
+
+    if (cargoOwnerOrganizationId.trim()) {
+      nextParams.set('cargoOwnerOrganizationId', cargoOwnerOrganizationId.trim());
+    }
+
+    if (isTripExceptionFilter(exception)) {
+      nextParams.set('exception', exception);
     }
 
     if (from) {
@@ -192,6 +224,56 @@ export function TripsClient() {
               onChange={(event) => setYardId(event.target.value)}
             />
           </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Ngoại lệ
+            </span>
+            <select
+              className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+              value={exception}
+              onChange={(event) => setException(event.target.value)}
+            >
+              <option value="">Tất cả ngoại lệ</option>
+              {tripExceptionFilters.map((filter) => (
+                <option key={filter} value={filter}>
+                  {tripExceptionFilterLabels[filter]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Tài xế
+            </span>
+            <input
+              className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+              placeholder="Mã hồ sơ tài xế"
+              value={driverProfileId}
+              onChange={(event) => setDriverProfileId(event.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Phương tiện
+            </span>
+            <input
+              className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+              placeholder="Mã phương tiện"
+              value={vehicleId}
+              onChange={(event) => setVehicleId(event.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Chủ hàng
+            </span>
+            <input
+              className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+              placeholder="Mã tổ chức chủ hàng"
+              value={cargoOwnerOrganizationId}
+              onChange={(event) => setCargoOwnerOrganizationId(event.target.value)}
+            />
+          </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -218,12 +300,15 @@ export function TripsClient() {
           </div>
         </form>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-8">
           <FilterSummary label="Trạng thái" value={filters.status ? tripStatusLabels[filters.status] : 'Tất cả trạng thái'} />
+          <FilterSummary label="Ngoại lệ" value={filters.exception ? tripExceptionFilterLabels[filters.exception] : 'Tất cả ngoại lệ'} />
           <FilterSummary label="Cửa khẩu" value={filters.borderGateId ? 'Đang lọc theo mã' : 'Tất cả cửa khẩu'} />
           <FilterSummary label="Bãi" value={filters.yardId ? 'Đang lọc theo mã' : 'Tất cả bãi'} />
-          <FilterSummary label="Từ ngày" value={toDateInputValue(filters.from) || 'Không giới hạn'} />
-          <FilterSummary label="Đến ngày" value={toDateInputValue(filters.to) || 'Không giới hạn'} />
+          <FilterSummary label="Tài xế" value={filters.driverProfileId ? 'Đang lọc theo mã' : 'Tất cả tài xế'} />
+          <FilterSummary label="Phương tiện" value={filters.vehicleId ? 'Đang lọc theo mã' : 'Tất cả xe'} />
+          <FilterSummary label="Chủ hàng" value={filters.cargoOwnerOrganizationId ? 'Đang lọc theo mã' : 'Tất cả chủ hàng'} />
+          <FilterSummary label="Khoảng ngày" value={formatDateRange(filters.from, filters.to)} />
         </div>
       </section>
 
@@ -334,6 +419,10 @@ function toFilters(searchParams: URLSearchParams): ListTripsParams {
   const status = searchParams.get('status');
   const borderGateId = searchParams.get('borderGateId')?.trim();
   const yardId = searchParams.get('yardId')?.trim();
+  const driverProfileId = searchParams.get('driverProfileId')?.trim();
+  const vehicleId = searchParams.get('vehicleId')?.trim();
+  const cargoOwnerOrganizationId = searchParams.get('cargoOwnerOrganizationId')?.trim();
+  const exception = searchParams.get('exception');
   const from = searchParams.get('from')?.trim();
   const to = searchParams.get('to')?.trim();
 
@@ -353,6 +442,22 @@ function toFilters(searchParams: URLSearchParams): ListTripsParams {
     filters.yardId = yardId;
   }
 
+  if (driverProfileId) {
+    filters.driverProfileId = driverProfileId;
+  }
+
+  if (vehicleId) {
+    filters.vehicleId = vehicleId;
+  }
+
+  if (cargoOwnerOrganizationId) {
+    filters.cargoOwnerOrganizationId = cargoOwnerOrganizationId;
+  }
+
+  if (isTripExceptionFilter(exception)) {
+    filters.exception = exception;
+  }
+
   if (from) {
     filters.from = from;
   }
@@ -366,6 +471,21 @@ function toFilters(searchParams: URLSearchParams): ListTripsParams {
 
 function isTripStatus(value: string | null): value is TripStatus {
   return tripStatuses.some((status) => status === value);
+}
+
+function isTripExceptionFilter(value: string | null): value is TripExceptionFilter {
+  return tripExceptionFilters.some((filter) => filter === value);
+}
+
+function formatDateRange(from?: string, to?: string) {
+  const fromValue = toDateInputValue(from);
+  const toValue = toDateInputValue(to);
+
+  if (!fromValue && !toValue) {
+    return 'Không giới hạn';
+  }
+
+  return `${fromValue || '...'} → ${toValue || '...'}`;
 }
 
 function toDateInputValue(value?: string) {

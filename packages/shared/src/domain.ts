@@ -94,7 +94,13 @@ export const tripEventTypes = [
   'TRIP_COMPLETED'
 ] as const;
 
-export const tripEventStatuses = ['RECORDED', 'CONFIRMED', 'REJECTED', 'CORRECTED', 'CONFLICTING'] as const;
+export const tripEventStatuses = [
+  'RECORDED',
+  'CONFIRMED',
+  'REJECTED',
+  'CORRECTED',
+  'CONFLICTING'
+] as const;
 
 export const tripEventSources = [
   'MANUAL',
@@ -105,6 +111,15 @@ export const tripEventSources = [
   'GPS',
   'SYSTEM',
   'AI_ASSISTANT'
+] as const;
+
+export const tripExceptionFilters = [
+  'ATTENTION',
+  'DELAYED',
+  'BLOCKED',
+  'STALE',
+  'INSPECTION',
+  'WAITING_YARD'
 ] as const;
 
 export const integrationProviders = [
@@ -132,6 +147,7 @@ export type VisibilityLevel = (typeof visibilityLevels)[number];
 export type TripEventType = (typeof tripEventTypes)[number];
 export type TripEventStatus = (typeof tripEventStatuses)[number];
 export type TripEventSource = (typeof tripEventSources)[number];
+export type TripExceptionFilter = (typeof tripExceptionFilters)[number];
 export type IntegrationProvider = (typeof integrationProviders)[number];
 export type NotificationChannel = (typeof notificationChannels)[number];
 

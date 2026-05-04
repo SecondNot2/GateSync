@@ -1,4 +1,4 @@
-import type { TripStatus } from '@gatesync/shared';
+import type { TripEventType, TripStatus } from '@gatesync/shared';
 import {
   adminDrivers,
   adminMembers,
@@ -118,8 +118,12 @@ function toDevTripSummary(trip: (typeof demoTrips)[number]): OperationsTripSumma
     plannedStartAt: trip.plannedStartAt,
     plannedArrivalAt: trip.plannedArrivalAt,
     delayMinutes: trip.delayMinutes,
+    statusDurationMinutes: 0,
     priority: trip.priority,
     nextAction: trip.nextAction,
+    nextActionLabel: 'Việc cần làm tiếp theo',
+    exceptionCodes: getDevExceptionCodes(trip.currentStatus, trip.delayMinutes),
+    availableManualActions: getDevManualActions(trip.currentStatus),
     eventCount: trip.events.length
   };
 }
@@ -183,6 +187,10 @@ function matchesFilters(trip: (typeof demoTrips)[number], filters: ListTripsPara
     return false;
   }
 
+  if (filters.exception && !matchesExceptionFilter(trip, filters.exception)) {
+    return false;
+  }
+
   if (!query) {
     return true;
   }
@@ -195,6 +203,80 @@ function matchesFilters(trip: (typeof demoTrips)[number], filters: ListTripsPara
     trip.borderGate,
     trip.yard
   ].some((value) => value.toLowerCase().includes(query));
+}
+
+function getDevExceptionCodes(
+  status: TripStatus,
+  delayMinutes: number
+): OperationsTripSummary['exceptionCodes'] {
+  const exceptionCodes: OperationsTripSummary['exceptionCodes'] = [];
+
+  if (delayMinutes > 0) {
+    exceptionCodes.push('ARRIVAL_OVERDUE');
+  }
+
+  if (status === 'BLOCKED') {
+    exceptionCodes.push('BLOCKED');
+  }
+
+  if (status === 'DELAYED') {
+    exceptionCodes.push('DELAYED_STATUS');
+  }
+
+  if (status === 'INSPECTION_REQUIRED') {
+    exceptionCodes.push('INSPECTION_REQUIRED');
+  }
+
+  if (status === 'WAITING_YARD_ENTRY') {
+    exceptionCodes.push('WAITING_YARD');
+  }
+
+  return exceptionCodes;
+}
+
+function getDevManualActions(status: TripStatus): TripEventType[] {
+  const actions: Record<TripStatus, TripEventType[]> = {
+    PLANNED: ['DEPARTED', 'TRIP_CANCELLED'],
+    IN_PROGRESS: ['ARRIVED_BORDER_AREA', 'WAITING_YARD_ENTRY', 'DRIVER_NOTE_ADDED'],
+    WAITING_YARD_ENTRY: ['YARD_ENTRY_CONFIRMED', 'DRIVER_REPORTED_YARD_ENTRY'],
+    IN_YARD: ['YARD_EXIT_CONFIRMED', 'DECLARATION_SUBMITTED'],
+    AT_BORDER_GATE: ['BORDER_GATE_ENTRY_CONFIRMED', 'DECLARATION_SUBMITTED', 'CUSTOMS_PROCESSING'],
+    CUSTOMS_PROCESSING: ['DECLARATION_APPROVED', 'INSPECTION_REQUIRED', 'FEE_PAID'],
+    INSPECTION_REQUIRED: ['INSPECTION_COMPLETED', 'DECLARATION_APPROVED'],
+    BLOCKED: ['DRIVER_NOTE_ADDED', 'DECLARATION_APPROVED', 'TRIP_CANCELLED'],
+    DELAYED: ['DRIVER_NOTE_ADDED', 'ARRIVED_BORDER_AREA', 'YARD_ENTRY_CONFIRMED'],
+    COMPLETED: [],
+    CANCELLED: []
+  };
+
+  return actions[status];
+}
+
+function matchesExceptionFilter(
+  trip: (typeof demoTrips)[number],
+  exception: NonNullable<ListTripsParams['exception']>
+) {
+  if (exception === 'ATTENTION') {
+    return trip.priority !== 'NORMAL' || trip.delayMinutes > 0;
+  }
+
+  if (exception === 'DELAYED') {
+    return trip.delayMinutes > 0 || trip.currentStatus === 'DELAYED';
+  }
+
+  if (exception === 'BLOCKED') {
+    return trip.currentStatus === 'BLOCKED';
+  }
+
+  if (exception === 'STALE') {
+    return trip.delayMinutes > 0;
+  }
+
+  if (exception === 'INSPECTION') {
+    return trip.currentStatus === 'INSPECTION_REQUIRED';
+  }
+
+  return trip.currentStatus === 'WAITING_YARD_ENTRY';
 }
 
 export const filterableStatuses: TripStatus[] = [

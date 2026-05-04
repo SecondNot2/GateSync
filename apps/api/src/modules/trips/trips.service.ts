@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateTripEventDto } from './dto/create-trip-event.dto';
 import type { CreateTripDto } from './dto/create-trip.dto';
 import type { ListTripsQueryDto } from './dto/list-trips-query.dto';
+import { TripOperationsService } from './trip-operations.service';
 import { TripStateTransitionService } from './trip-state-transition.service';
 
 type PrismaExecutor = Prisma.TransactionClient | PrismaService;
@@ -18,6 +19,33 @@ type DriverProfileReference = {
   id: string;
   userId: string | null;
 };
+
+const latestTripEventsSelect = {
+  eventType: true,
+  occurredAt: true,
+  recordedAt: true
+} satisfies Prisma.TripEventSelect;
+
+const notificationEventTypes = [
+  'DEPARTED',
+  'ARRIVED_BORDER_AREA',
+  'WAITING_YARD_ENTRY',
+  'YARD_ENTRY_CONFIRMED',
+  'YARD_EXIT_CONFIRMED',
+  'DECLARATION_REJECTED',
+  'INSPECTION_REQUIRED',
+  'BORDER_GATE_EXIT_CONFIRMED',
+  'TRIP_COMPLETED',
+  'TRIP_CANCELLED'
+] as const;
+
+const notificationRecipientRoles = [
+  'OWNER',
+  'ADMIN',
+  'DISPATCHER',
+  'DOCUMENT_STAFF',
+  'FIELD_OPERATOR'
+] as const;
 
 const tripSummaryInclude = {
   vehicle: true,
@@ -35,6 +63,18 @@ const tripSummaryInclude = {
   },
   borderGate: true,
   yard: true,
+  events: {
+    orderBy: [
+      {
+        occurredAt: 'desc'
+      },
+      {
+        recordedAt: 'desc'
+      }
+    ],
+    take: 3,
+    select: latestTripEventsSelect
+  },
   _count: {
     select: {
       events: true,
@@ -61,6 +101,18 @@ const tripDetailInclude = {
   customsDeclaration: true,
   borderGate: true,
   yard: true,
+  events: {
+    orderBy: [
+      {
+        occurredAt: 'desc'
+      },
+      {
+        recordedAt: 'desc'
+      }
+    ],
+    take: 3,
+    select: latestTripEventsSelect
+  },
   participants: {
     orderBy: {
       createdAt: 'asc'
@@ -95,6 +147,7 @@ const tripDetailInclude = {
 export class TripsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(TripOperationsService) private readonly operations: TripOperationsService,
     @Inject(TripStateTransitionService) private readonly transitions: TripStateTransitionService
   ) {}
 
@@ -123,6 +176,14 @@ export class TripsService {
 
     if (query.vehicleId) {
       where.vehicleId = query.vehicleId;
+    }
+
+    if (query.cargoOwnerOrganizationId) {
+      where.shipment = {
+        is: {
+          cargoOwnerOrganizationId: query.cargoOwnerOrganizationId
+        }
+      };
     }
 
     const plannedStartAt: Prisma.DateTimeNullableFilter = {};
@@ -206,7 +267,6 @@ export class TripsService {
 
     const findArgs: Prisma.TripFindManyArgs = {
       where,
-      take,
       include: tripSummaryInclude,
       orderBy: [
         {
@@ -218,12 +278,31 @@ export class TripsService {
       ]
     };
 
-    if (query.cursor) {
-      findArgs.skip = 1;
-      findArgs.cursor = { id: query.cursor };
+    if (!query.exception) {
+      findArgs.take = take;
+
+      if (query.cursor) {
+        findArgs.skip = 1;
+        findArgs.cursor = { id: query.cursor };
+      }
     }
 
-    return this.prisma.trip.findMany(findArgs);
+    const trips = this.operations.enrichTrips(await this.prisma.trip.findMany(findArgs));
+    const filteredTrips = query.exception
+      ? trips.filter((trip) => this.operations.matchesExceptionFilter(trip, query.exception!))
+      : trips;
+    const sortedTrips = this.operations.sortTripsForOperations(filteredTrips);
+
+    if (!query.exception) {
+      return sortedTrips;
+    }
+
+    const cursorIndex = query.cursor
+      ? sortedTrips.findIndex((trip) => trip.id === query.cursor)
+      : -1;
+    const startIndex = cursorIndex >= 0 ? cursorIndex + 1 : 0;
+
+    return sortedTrips.slice(startIndex, startIndex + take);
   }
 
   async getTrip(organizationId: string, tripId: string) {
@@ -240,7 +319,7 @@ export class TripsService {
       throw new NotFoundException('Trip was not found.');
     }
 
-    return trip;
+    return this.operations.enrichTrip(trip);
   }
 
   async createTrip(user: RequestUser, organizationId: string, dto: CreateTripDto) {
@@ -393,6 +472,8 @@ export class TripsService {
           });
         }
 
+        const projectedStatus = nextStatus ?? trip.currentStatus;
+
         await tx.auditLog.create({
           data: {
             organizationId,
@@ -406,10 +487,12 @@ export class TripsService {
             after: {
               tripId,
               eventType: event.eventType,
-              currentStatus: nextStatus ?? trip.currentStatus
+              currentStatus: projectedStatus
             }
           }
         });
+
+        await this.createEventNotifications(tx, organizationId, tripId, event, projectedStatus);
 
         return event;
       });
@@ -657,6 +740,53 @@ export class TripsService {
     }
 
     return data;
+  }
+
+  private async createEventNotifications(
+    prisma: PrismaExecutor,
+    organizationId: string,
+    tripId: string,
+    event: { id: string; eventType: string; occurredAt: Date },
+    currentStatus: string
+  ) {
+    if (!notificationEventTypes.some((eventType) => eventType === event.eventType)) {
+      return;
+    }
+
+    const memberships = await prisma.membership.findMany({
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+        role: {
+          in: [...notificationRecipientRoles]
+        }
+      },
+      select: {
+        userId: true
+      }
+    });
+    const recipientUserIds = [...new Set(memberships.map((membership) => membership.userId))];
+
+    if (recipientUserIds.length === 0) {
+      return;
+    }
+
+    await prisma.notification.createMany({
+      data: recipientUserIds.map((recipientUserId) => ({
+        organizationId,
+        tripId,
+        recipientUserId,
+        channel: 'IN_APP',
+        status: 'PENDING',
+        payload: {
+          kind: 'trip_event',
+          eventId: event.id,
+          eventType: event.eventType,
+          currentStatus,
+          occurredAt: event.occurredAt.toISOString()
+        }
+      }))
+    });
   }
 
   private normalizeIdempotencyKey(value: string | undefined): string | undefined {

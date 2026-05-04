@@ -7,6 +7,7 @@ import type {
   TripEventSource,
   TripEventStatus,
   TripEventType,
+  TripExceptionFilter,
   TripParticipantRole,
   TripStatus,
   TripType,
@@ -116,6 +117,41 @@ export type ApiTripCounts = {
   participants: number;
 };
 
+export type ApiTripOperationalPriority = 'HIGH' | 'MEDIUM' | 'NORMAL';
+
+export type ApiTripExceptionCode =
+  | 'ARRIVAL_OVERDUE'
+  | 'BLOCKED'
+  | 'DELAYED_STATUS'
+  | 'INSPECTION_REQUIRED'
+  | 'PLANNED_START_OVERDUE'
+  | 'STATUS_STALE'
+  | 'WAITING_YARD';
+
+export type ApiTripNextAction = {
+  code: string;
+  label: string;
+  description: string;
+  suggestedEventTypes: TripEventType[];
+};
+
+export type ApiTripOperationalState = {
+  delayMinutes: number;
+  statusDurationMinutes: number;
+  priority: ApiTripOperationalPriority;
+  exceptionCodes: ApiTripExceptionCode[];
+  nextAction: ApiTripNextAction;
+  availableManualActions: TripEventType[];
+  latestEventType?: TripEventType;
+  latestEventOccurredAt?: string;
+};
+
+export type ApiTripSummaryEvent = {
+  eventType: TripEventType;
+  occurredAt: string;
+  recordedAt: string;
+};
+
 export type ApiTripSummary = {
   id: string;
   organizationId: string;
@@ -138,6 +174,8 @@ export type ApiTripSummary = {
   driverProfile?: ApiDriverProfile | null;
   borderGate?: ApiBorderGate | null;
   yard?: ApiYard | null;
+  events?: ApiTripSummaryEvent[];
+  operationalState?: ApiTripOperationalState;
   _count?: ApiTripCounts;
 };
 
@@ -184,6 +222,17 @@ export type ApiDashboardSummary = {
     attentionTrips: number;
     eventsToday: number;
   };
+  delaySummary: {
+    delayedTrips: number;
+    blockedTrips: number;
+    staleTrips: number;
+    averageDelayMinutes: number;
+    longestDelayMinutes: number;
+    groups: Array<{
+      key: ApiTripExceptionCode;
+      count: number;
+    }>;
+  };
   statusGroups: Array<{
     key: string;
     statuses: TripStatus[];
@@ -209,6 +258,8 @@ export type ListTripsParams = {
   yardId?: string;
   driverProfileId?: string;
   vehicleId?: string;
+  cargoOwnerOrganizationId?: string;
+  exception?: TripExceptionFilter;
   from?: string;
   to?: string;
 };

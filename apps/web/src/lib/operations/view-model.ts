@@ -20,6 +20,7 @@ import type {
   ApiOrganization,
   ApiTripDetail,
   ApiTripEvent,
+  ApiTripExceptionCode,
   ApiTripSummary,
   ApiVehicle,
   ListTripsParams
@@ -82,8 +83,12 @@ export type OperationsTripSummary = {
   plannedStartAt: string;
   plannedArrivalAt: string;
   delayMinutes: number;
+  statusDurationMinutes: number;
   priority: OperationsPriority;
   nextAction: string;
+  nextActionLabel: string;
+  exceptionCodes: ApiTripExceptionCode[];
+  availableManualActions: TripEventType[];
   eventCount: number;
 };
 
@@ -283,13 +288,16 @@ export function toApiDashboardView(
       {
         label: 'Xe chậm cần xử lý',
         value: String(delayedTrips),
-        trend: delayedTrips > 0 ? 'Cần rà soát trong ca trực' : 'Chưa có xe quá hạn',
+        trend:
+          delayedTrips > 0
+            ? `Chậm nhất ${summary.delaySummary.longestDelayMinutes} phút, trung bình ${summary.delaySummary.averageDelayMinutes} phút`
+            : 'Chưa có xe quá hạn',
         indicatorClass: 'bg-amber-400'
       },
       {
         label: 'Chuyến cần chú ý',
         value: String(summary.metrics.attentionTrips),
-        trend: 'Gồm chờ bãi, kiểm hóa, bị chặn hoặc chậm',
+        trend: `Bị chặn: ${summary.delaySummary.blockedTrips}, quá lâu: ${summary.delaySummary.staleTrips}`,
         indicatorClass: 'bg-rose-400'
       },
       {
@@ -416,8 +424,9 @@ export function toOrganizationContext(
 }
 
 export function toTripSummaryView(trip: ApiTripSummary): OperationsTripSummary {
-  const delayMinutes = calculateDelayMinutes(trip);
-  const priority = getTripPriority(trip, delayMinutes);
+  const operationalState = trip.operationalState;
+  const delayMinutes = operationalState?.delayMinutes ?? calculateDelayMinutes(trip);
+  const priority = operationalState?.priority ?? getTripPriority(trip, delayMinutes);
 
   const summary: OperationsTripSummary = {
     id: trip.id,
@@ -441,8 +450,12 @@ export function toTripSummaryView(trip: ApiTripSummary): OperationsTripSummary {
     plannedStartAt: formatApiDateTime(trip.plannedStartAt),
     plannedArrivalAt: formatApiDateTime(trip.plannedArrivalAt),
     delayMinutes,
+    statusDurationMinutes: operationalState?.statusDurationMinutes ?? 0,
     priority,
-    nextAction: getNextAction(trip.currentStatus, delayMinutes),
+    nextAction: operationalState?.nextAction.description ?? getNextAction(trip.currentStatus, delayMinutes),
+    nextActionLabel: operationalState?.nextAction.label ?? 'Việc cần làm tiếp theo',
+    exceptionCodes: operationalState?.exceptionCodes ?? [],
+    availableManualActions: operationalState?.availableManualActions ?? [],
     eventCount: trip._count?.events ?? 0
   };
 

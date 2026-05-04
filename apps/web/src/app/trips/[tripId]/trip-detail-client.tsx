@@ -33,6 +33,17 @@ const manualEventOptions: Array<{ value: TripEventType; label: string }> = [
   { value: 'TRIP_COMPLETED', label: tripEventTypeLabels.TRIP_COMPLETED }
 ];
 
+function resolveManualEventOptions(actions?: TripEventType[]) {
+  if (actions === undefined) {
+    return manualEventOptions;
+  }
+
+  return actions.map((value) => ({
+    value,
+    label: tripEventTypeLabels[value]
+  }));
+}
+
 export function TripDetailClient({ tripId }: { tripId: string }) {
   const [data, setData] = useState<TripDetailViewData>();
   const [error, setError] = useState<string>();
@@ -78,6 +89,14 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
     };
   }, [tripId]);
 
+  useEffect(() => {
+    const firstAction = data?.trip.availableManualActions[0];
+
+    if (firstAction && !data.trip.availableManualActions.includes(eventType)) {
+      setEventType(firstAction);
+    }
+  }, [data?.trip.availableManualActions, eventType]);
+
   async function submitManualEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
@@ -111,6 +130,7 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
 
   const trip = data?.trip;
   const latestEvent = trip?.events[trip.events.length - 1];
+  const manualActionOptions = resolveManualEventOptions(trip?.availableManualActions);
 
   return (
     <AppShell
@@ -186,7 +206,7 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
               </div>
 
               <div className="mt-6 rounded-3xl border border-sky-100 bg-sky-50 p-5">
-                <p className="text-sm font-semibold text-sky-900">Việc cần làm tiếp theo</p>
+                <p className="text-sm font-semibold text-sky-900">{trip.nextActionLabel}</p>
                 <p className="mt-2 text-sm leading-6 text-slate-700">{trip.nextAction}</p>
               </div>
             </div>
@@ -199,14 +219,30 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
                 <div className="mt-4 grid gap-3">
                   <button
                     type="button"
+                    disabled={manualActionOptions.length === 0}
                     onClick={() => setIsFormOpen((value) => !value)}
-                    className="min-h-12 rounded-2xl bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-slate-800"
+                    className="min-h-12 rounded-2xl bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
                     Ghi nhận sự kiện mới
                   </button>
-                  <button className="min-h-12 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-semibold text-amber-800 transition hover:bg-amber-100">
-                    Đánh dấu cần theo dõi chậm
-                  </button>
+                  {manualActionOptions.slice(0, 4).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        setEventType(option.value);
+                        setIsFormOpen(true);
+                      }}
+                      className="min-h-12 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-left text-sm font-semibold text-sky-800 transition hover:bg-sky-100"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                  {manualActionOptions.length === 0 ? (
+                    <p className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      Chuyến đã kết thúc hoặc chưa có thao tác thủ công phù hợp.
+                    </p>
+                  ) : null}
                 </div>
 
                 {isFormOpen ? (
@@ -225,7 +261,7 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
                           setEventType(inputEvent.target.value as TripEventType)
                         }
                       >
-                        {manualEventOptions.map((option) => (
+                        {manualActionOptions.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
@@ -256,7 +292,7 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
                       />
                     </label>
                     <button
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || manualActionOptions.length === 0}
                       className="min-h-12 w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                     >
                       {isSubmitting ? 'Đang ghi nhận...' : 'Lưu sự kiện'}

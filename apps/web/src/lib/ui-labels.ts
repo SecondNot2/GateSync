@@ -7,6 +7,7 @@ import type {
   TripEventSource,
   TripEventStatus,
   TripEventType,
+  TripExceptionFilter,
   TripStatus,
   TripType,
   VehicleType
@@ -117,6 +118,15 @@ export const tripEventStatusLabels: Record<TripEventStatus, string> = {
   REJECTED: 'Bị từ chối',
   CORRECTED: 'Đã hiệu chỉnh',
   CONFLICTING: 'Có xung đột'
+};
+
+export const tripExceptionFilterLabels: Record<TripExceptionFilter, string> = {
+  ATTENTION: 'Cần chú ý',
+  DELAYED: 'Đang chậm tiến độ',
+  BLOCKED: 'Bị chặn',
+  STALE: 'Quá lâu chưa cập nhật',
+  INSPECTION: 'Cần kiểm hóa',
+  WAITING_YARD: 'Đang chờ bãi'
 };
 
 export const tripEventSourceLabels: Record<TripEventSource, string> = {

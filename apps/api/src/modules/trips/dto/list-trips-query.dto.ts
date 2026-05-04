@@ -12,6 +12,7 @@ import {
   Min
 } from 'class-validator';
 import type { TripStatus } from '@prisma/client';
+import { tripExceptionFilters, type TripExceptionFilter } from '../trip-operations.service';
 
 const tripStatuses = [
   'PLANNED',
@@ -90,6 +91,21 @@ export class ListTripsQueryDto {
   @IsOptional()
   @IsUUID()
   vehicleId?: string;
+
+  @ApiPropertyOptional({
+    example: '00000000-0000-4000-8000-000000000016'
+  })
+  @IsOptional()
+  @IsUUID()
+  cargoOwnerOrganizationId?: string;
+
+  @ApiPropertyOptional({
+    enum: tripExceptionFilters,
+    example: 'DELAYED'
+  })
+  @IsOptional()
+  @IsIn(tripExceptionFilters)
+  exception?: TripExceptionFilter;
 
   @ApiPropertyOptional({
     example: '2026-05-04T00:00:00.000Z'

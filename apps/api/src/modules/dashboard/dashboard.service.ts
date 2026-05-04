@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Prisma, TripStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { TripOperationsService } from '../trips/trip-operations.service';
 
-const activeStatuses = [
+const activeStatuses: readonly TripStatus[] = [
   'PLANNED',
   'IN_PROGRESS',
   'WAITING_YARD_ENTRY',
@@ -12,14 +13,14 @@ const activeStatuses = [
   'INSPECTION_REQUIRED',
   'BLOCKED',
   'DELAYED'
-] satisfies TripStatus[];
+];
 
-const attentionStatuses = [
+const attentionStatuses: readonly TripStatus[] = [
   'WAITING_YARD_ENTRY',
   'INSPECTION_REQUIRED',
   'BLOCKED',
   'DELAYED'
-] satisfies TripStatus[];
+];
 
 const dashboardStatusGroups = [
   {
@@ -48,6 +49,12 @@ const dashboardStatusGroups = [
   }
 ] satisfies Array<{ key: string; statuses: TripStatus[] }>;
 
+const latestTripEventsSelect = {
+  eventType: true,
+  occurredAt: true,
+  recordedAt: true
+} satisfies Prisma.TripEventSelect;
+
 const tripSummaryInclude = {
   vehicle: true,
   driverProfile: {
@@ -64,6 +71,18 @@ const tripSummaryInclude = {
   },
   borderGate: true,
   yard: true,
+  events: {
+    orderBy: [
+      {
+        occurredAt: 'desc'
+      },
+      {
+        recordedAt: 'desc'
+      }
+    ],
+    take: 3,
+    select: latestTripEventsSelect
+  },
   _count: {
     select: {
       events: true,
@@ -74,60 +93,23 @@ const tripSummaryInclude = {
 
 @Injectable()
 export class DashboardService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(TripOperationsService) private readonly operations: TripOperationsService
+  ) {}
 
   async getSummary(organizationId: string) {
     const now = new Date();
     const startOfDay = new Date(now);
     startOfDay.setHours(0, 0, 0, 0);
 
-    const [
-      activeTrips,
-      delayedTrips,
-      attentionTrips,
-      eventsToday,
-      statusRows,
-      urgentTrips,
-      recentEvents
-    ] = await this.prisma.$transaction([
-      this.prisma.trip.count({
+    const [operationTrips, eventsToday, recentEvents] = await this.prisma.$transaction([
+      this.prisma.trip.findMany({
         where: {
           organizationId,
-          deletedAt: null,
-          currentStatus: {
-            in: activeStatuses
-          }
-        }
-      }),
-      this.prisma.trip.count({
-        where: {
-          organizationId,
-          deletedAt: null,
-          currentStatus: {
-            notIn: ['COMPLETED', 'CANCELLED']
-          },
-          OR: [
-            {
-              currentStatus: {
-                in: ['DELAYED', 'BLOCKED']
-              }
-            },
-            {
-              plannedArrivalAt: {
-                lt: now
-              }
-            }
-          ]
-        }
-      }),
-      this.prisma.trip.count({
-        where: {
-          organizationId,
-          deletedAt: null,
-          currentStatus: {
-            in: attentionStatuses
-          }
-        }
+          deletedAt: null
+        },
+        include: tripSummaryInclude
       }),
       this.prisma.tripEvent.count({
         where: {
@@ -136,46 +118,6 @@ export class DashboardService {
             gte: startOfDay
           }
         }
-      }),
-      this.prisma.trip.findMany({
-        where: {
-          organizationId,
-          deletedAt: null
-        },
-        select: {
-          currentStatus: true
-        }
-      }),
-      this.prisma.trip.findMany({
-        where: {
-          organizationId,
-          deletedAt: null,
-          currentStatus: {
-            notIn: ['COMPLETED', 'CANCELLED']
-          },
-          OR: [
-            {
-              currentStatus: {
-                in: attentionStatuses
-              }
-            },
-            {
-              plannedArrivalAt: {
-                lt: now
-              }
-            }
-          ]
-        },
-        include: tripSummaryInclude,
-        orderBy: [
-          {
-            plannedArrivalAt: 'asc'
-          },
-          {
-            currentStatusUpdatedAt: 'asc'
-          }
-        ],
-        take: 6
       }),
       this.prisma.tripEvent.findMany({
         where: {
@@ -210,7 +152,19 @@ export class DashboardService {
       })
     ]);
 
-    const countByStatus = statusRows.reduce((counts, item) => {
+    const enrichedTrips = this.operations.enrichTrips(operationTrips, now);
+    const activeTrips = enrichedTrips.filter((trip) => activeStatuses.includes(trip.currentStatus));
+    const delaySummary = this.operations.createDelaySummary(activeTrips);
+    const urgentTrips = this.operations
+      .sortTripsForOperations(
+        activeTrips.filter(
+          (trip) =>
+            trip.operationalState.priority !== 'NORMAL' ||
+            attentionStatuses.includes(trip.currentStatus)
+        )
+      )
+      .slice(0, 6);
+    const countByStatus = enrichedTrips.reduce((counts, item) => {
       counts.set(item.currentStatus, (counts.get(item.currentStatus) ?? 0) + 1);
       return counts;
     }, new Map<TripStatus, number>());
@@ -218,11 +172,12 @@ export class DashboardService {
     return {
       generatedAt: now.toISOString(),
       metrics: {
-        activeTrips,
-        delayedTrips,
-        attentionTrips,
+        activeTrips: activeTrips.length,
+        delayedTrips: delaySummary.delayedTrips,
+        attentionTrips: urgentTrips.length,
         eventsToday
       },
+      delaySummary,
       statusGroups: dashboardStatusGroups.map((group) => ({
         key: group.key,
         statuses: group.statuses,
