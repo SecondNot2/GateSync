@@ -28,7 +28,7 @@ const requestUser: RequestUser = {
 
 function loadFixture(): CuaKhauSoDeclarationDetail {
   const raw = JSON.parse(
-    readFileSync(path.resolve(process.cwd(), '../../handoff/fixtures/raw-json.json'), 'utf8')
+    readFileSync(path.resolve(process.cwd(), 'src/modules/integrations/cua-khau-so/__fixtures__/raw-json.json'), 'utf8')
   ) as { data: CuaKhauSoDeclarationDetail };
 
   return raw.data;
