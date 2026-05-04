@@ -1,5 +1,6 @@
 import { apiClient } from '@/lib/api/client';
 import type {
+  ApiCurrentUser,
   ApiDriverProfile,
   ApiCuaKhauSoDeclarationDetail,
   ApiCuaKhauSoDeclarationList,
@@ -57,6 +58,9 @@ function buildCuaKhauSoQuery(params: ListCuaKhauSoDeclarationsParams = {}) {
 }
 
 export const gatesyncApi = {
+  getMe: ({ accessToken }: AuthenticatedOptions) =>
+    apiClient.get<ApiCurrentUser>('/me', { accessToken }),
+
   listOrganizations: ({ accessToken }: AuthenticatedOptions) =>
     apiClient.get<ApiOrganization[]>('/organizations', { accessToken }),
 

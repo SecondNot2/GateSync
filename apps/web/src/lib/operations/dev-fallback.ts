@@ -77,8 +77,9 @@ export function getDevAdminData(reason: string): AdminViewData {
       email: 'ops@gatesync.local',
       phone: '+84988123456',
       currentUserRole: 'OWNER',
-      canManageMembers: false,
-      canManageFleet: false
+      canManageMembers: true,
+      canManageFleet: true,
+      canOpenAdmin: true
     },
     members: adminMembers,
     vehicles: adminVehicles,
@@ -158,7 +159,35 @@ function toDevOrganization(
     name: demoOrganization.name,
     type: demoOrganization.type,
     controlScore: demoOrganization.controlScore,
-    notice: reason
+    notice: reason,
+    currentUser: {
+      id: 'dev-user',
+      name: 'Điều phối viên GateSync',
+      email: 'ops@gatesync.local',
+      role: 'OWNER',
+      permissions: [
+        'organizations:read',
+        'organizations:update',
+        'memberships:manage',
+        'fleet:manage',
+        'trips:read',
+        'trips:manage',
+        'integrations:cua-khau-so:read',
+        'integrations:cua-khau-so:sync',
+        'integrations:cua-khau-so:connect',
+        'billing:manage'
+      ],
+      activeOrganizationCount: 1,
+      canReadTrips: true,
+      canManageTrips: true,
+      canManageMembers: true,
+      canManageFleet: true,
+      canUseCuaKhauSoIntegration: true,
+      canConnectCuaKhauSoIntegration: true,
+      canSyncCuaKhauSoIntegration: true,
+      canManageBilling: true,
+      canOpenAdmin: true
+    }
   };
 
   if (activeTripCount !== undefined) {

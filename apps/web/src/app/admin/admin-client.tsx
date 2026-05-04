@@ -20,7 +20,12 @@ import {
   updateAdminVehicle
 } from '@/lib/operations/data';
 import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
-import type { AdminDriver, AdminVehicle, AdminViewData } from '@/lib/operations/view-model';
+import type {
+  AdminDriver,
+  AdminMember,
+  AdminVehicle,
+  AdminViewData
+} from '@/lib/operations/view-model';
 import {
   membershipRoleLabels,
   membershipStatusLabels,
@@ -53,6 +58,16 @@ const emptyDriverForm: DriverFormState = {
   displayName: '',
   phone: '',
   licenseNumber: ''
+};
+
+const roleDescriptions: Record<AdminMember['role'], string> = {
+  OWNER: 'Toàn quyền tổ chức, thành viên, đội xe, chuyến và cấu hình thanh toán.',
+  ADMIN: 'Quản trị vận hành nội bộ, thành viên, đội xe và chuyến; không quản lý thanh toán.',
+  DISPATCHER: 'Điều phối chuyến và đội xe, phù hợp cho ca trực vận hành.',
+  DOCUMENT_STAFF: 'Xử lý chứng từ, tờ khai và sự kiện liên quan hồ sơ chuyến.',
+  FIELD_OPERATOR: 'Cập nhật hiện trường và sự kiện vận hành được phân công.',
+  VIEWER: 'Chỉ xem dữ liệu được cấp quyền, không thực hiện thao tác ghi.',
+  BILLING_ADMIN: 'Theo dõi và xử lý nghiệp vụ thanh toán, không điều phối chuyến.'
 };
 
 export function AdminClient() {
@@ -328,6 +343,9 @@ export function AdminClient() {
                 </span>
                 . API vẫn kiểm tra tenant và RBAC cho mọi thao tác ghi.
               </p>
+              <p className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+                {roleDescriptions[data.profile.currentUserRole]}
+              </p>
               <div className="mt-5 grid gap-3 text-sm">
                 <span className="rounded-2xl bg-slate-50 px-4 py-3">
                   {data.members.length} thành viên
@@ -360,7 +378,7 @@ export function AdminClient() {
               {data.members.map((member) => (
                 <div
                   key={member.id}
-                  className="grid gap-4 px-5 py-5 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr] xl:items-center"
+                  className="grid gap-4 px-5 py-5 xl:grid-cols-[1fr_1fr_1fr_0.8fr] xl:items-center"
                 >
                   <div>
                     <p className="font-semibold text-slate-950">{member.name}</p>
@@ -369,9 +387,14 @@ export function AdminClient() {
                     </p>
                   </div>
                   <p className="text-sm text-slate-600">{member.email}</p>
-                  <p className="text-sm font-semibold text-slate-800">
-                    {membershipRoleLabels[member.role]}
-                  </p>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">
+                      {membershipRoleLabels[member.role]}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      {roleDescriptions[member.role]}
+                    </p>
+                  </div>
                   <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
                     {membershipStatusLabels[member.status]}
                   </span>
@@ -751,7 +774,12 @@ function CardActions({
   onRemove: () => void;
 }) {
   if (!enabled) {
-    return null;
+    return (
+      <div className="mt-4 rounded-2xl border border-slate-100 bg-white px-4 py-3 text-xs font-semibold text-slate-500">
+        Vai trò hiện tại chỉ được xem mục này. API sẽ từ chối mọi thao tác sửa hoặc gỡ nếu không đủ
+        quyền.
+      </div>
+    );
   }
 
   return (

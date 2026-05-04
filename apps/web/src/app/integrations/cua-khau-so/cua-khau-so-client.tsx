@@ -58,6 +58,9 @@ export function CuaKhauSoClient() {
   const [direction, setDirection] = useState<string>('');
   const [pageSize, setPageSize] = useState<ApiCuaKhauSoPageSize>(20);
   const [selectedExternalId, setSelectedExternalId] = useState<string>();
+  const currentUser = data?.organization.currentUser;
+  const canConnectIntegration = currentUser?.canConnectCuaKhauSoIntegration ?? true;
+  const canSyncIntegration = currentUser?.canSyncCuaKhauSoIntegration ?? true;
   const filters = useMemo<ListCuaKhauSoDeclarationsParams>(() => {
     const nextFilters: ListCuaKhauSoDeclarationsParams = {
       pageNumber: 1,
@@ -127,6 +130,11 @@ export function CuaKhauSoClient() {
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canConnectIntegration) {
+      setError('Vai trò hiện tại không có quyền kết nối phiên Cửa khẩu số.');
+      return;
+    }
+
     setIsConnecting(true);
     setMessage(undefined);
     setError(undefined);
@@ -170,6 +178,11 @@ export function CuaKhauSoClient() {
 
   async function syncSelectedDeclaration() {
     if (!detail) {
+      return;
+    }
+
+    if (!canSyncIntegration) {
+      setError('Vai trò hiện tại không có quyền đồng bộ tờ khai vào GateSync.');
       return;
     }
 
@@ -262,11 +275,21 @@ export function CuaKhauSoClient() {
                 </label>
                 <button
                   className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  disabled={isConnecting || !username.trim() || !password}
+                  disabled={isConnecting || !username.trim() || !password || !canConnectIntegration}
                 >
-                  {isConnecting ? 'Đang kết nối...' : 'Kết nối chỉ đọc'}
+                  {canConnectIntegration
+                    ? isConnecting
+                      ? 'Đang kết nối...'
+                      : 'Kết nối chỉ đọc'
+                    : 'Không có quyền kết nối'}
                 </button>
               </form>
+              {!canConnectIntegration ? (
+                <p className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Chỉ các vai trò được phân quyền tích hợp mới có thể tạo phiên đọc Cửa khẩu số. API
+                  vẫn kiểm tra quyền trước khi nhận thông tin đăng nhập nguồn.
+                </p>
+              ) : null}
             </div>
 
             <div className="rounded-[1.75rem] border border-emerald-100 bg-emerald-50 p-4 shadow-soft sm:p-5">
@@ -364,6 +387,7 @@ export function CuaKhauSoClient() {
                   detail={detail}
                   isLoading={isDetailLoading}
                   isSyncing={isSyncing}
+                  canSync={canSyncIntegration}
                   syncResult={syncResult}
                   onSync={() => void syncSelectedDeclaration()}
                 />
@@ -436,12 +460,14 @@ function DeclarationDetailPanel({
   detail,
   isLoading,
   isSyncing,
+  canSync,
   syncResult,
   onSync
 }: {
   detail: ApiCuaKhauSoDeclarationDetail | undefined;
   isLoading: boolean;
   isSyncing: boolean;
+  canSync: boolean;
   syncResult: ApiCuaKhauSoSyncResult | undefined;
   onSync: () => void;
 }) {
@@ -528,14 +554,18 @@ function DeclarationDetailPanel({
       <button
         type="button"
         onClick={onSync}
-        disabled={isSyncing}
+        disabled={isSyncing || !canSync}
         className="mt-5 min-h-12 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
       >
-        {isSyncing ? 'Đang đồng bộ...' : 'Đồng bộ vào GateSync'}
+        {canSync
+          ? isSyncing
+            ? 'Đang đồng bộ...'
+            : 'Đồng bộ vào GateSync'
+          : 'Không có quyền đồng bộ'}
       </button>
       <p className="mt-3 text-xs leading-5 text-slate-500">
         Nút này chỉ ghi vào cơ sở dữ liệu GateSync. GateSync không gửi thao tác sửa/xóa lên Cửa khẩu
-        số.
+        số. Nếu bị khóa, vai trò hiện tại chỉ được xem dữ liệu tích hợp.
       </p>
 
       {syncResult ? (

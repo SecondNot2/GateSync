@@ -134,6 +134,19 @@ export const integrationProviders = [
 
 export const notificationChannels = ['EMAIL', 'IN_APP', 'ZALO_OA', 'SMS', 'WEBHOOK'] as const;
 
+export const organizationPermissions = [
+  'organizations:read',
+  'organizations:update',
+  'memberships:manage',
+  'fleet:manage',
+  'trips:read',
+  'trips:manage',
+  'integrations:cua-khau-so:read',
+  'integrations:cua-khau-so:sync',
+  'integrations:cua-khau-so:connect',
+  'billing:manage'
+] as const;
+
 export type OrganizationType = (typeof organizationTypes)[number];
 export type MembershipRole = (typeof membershipRoles)[number];
 export type MembershipStatus = (typeof membershipStatuses)[number];
@@ -150,6 +163,71 @@ export type TripEventSource = (typeof tripEventSources)[number];
 export type TripExceptionFilter = (typeof tripExceptionFilters)[number];
 export type IntegrationProvider = (typeof integrationProviders)[number];
 export type NotificationChannel = (typeof notificationChannels)[number];
+export type OrganizationPermission = (typeof organizationPermissions)[number];
+
+export const rolePermissions = {
+  OWNER: [
+    'organizations:read',
+    'organizations:update',
+    'memberships:manage',
+    'fleet:manage',
+    'trips:read',
+    'trips:manage',
+    'integrations:cua-khau-so:read',
+    'integrations:cua-khau-so:sync',
+    'integrations:cua-khau-so:connect',
+    'billing:manage'
+  ],
+  ADMIN: [
+    'organizations:read',
+    'organizations:update',
+    'memberships:manage',
+    'fleet:manage',
+    'trips:read',
+    'trips:manage',
+    'integrations:cua-khau-so:read',
+    'integrations:cua-khau-so:sync',
+    'integrations:cua-khau-so:connect'
+  ],
+  DISPATCHER: [
+    'organizations:read',
+    'fleet:manage',
+    'trips:read',
+    'trips:manage',
+    'integrations:cua-khau-so:read',
+    'integrations:cua-khau-so:sync',
+    'integrations:cua-khau-so:connect'
+  ],
+  DOCUMENT_STAFF: [
+    'organizations:read',
+    'trips:read',
+    'trips:manage',
+    'integrations:cua-khau-so:read',
+    'integrations:cua-khau-so:sync',
+    'integrations:cua-khau-so:connect'
+  ],
+  FIELD_OPERATOR: ['organizations:read', 'trips:read', 'trips:manage'],
+  VIEWER: ['organizations:read', 'trips:read'],
+  BILLING_ADMIN: ['organizations:read', 'billing:manage']
+} satisfies Record<MembershipRole, OrganizationPermission[]>;
+
+export function getRolePermissions(role: MembershipRole): OrganizationPermission[] {
+  return [...rolePermissions[role]];
+}
+
+export function hasOrganizationPermission(
+  role: MembershipRole,
+  permission: OrganizationPermission
+) {
+  return rolePermissions[role].some((item) => item === permission);
+}
+
+export function hasAnyOrganizationPermission(
+  role: MembershipRole,
+  permissions: OrganizationPermission[]
+) {
+  return permissions.some((permission) => hasOrganizationPermission(role, permission));
+}
 
 export const organizationTypeSchema = z.enum(organizationTypes);
 export const membershipRoleSchema = z.enum(membershipRoles);

@@ -1,19 +1,24 @@
-import type {
-  MembershipRole,
-  MembershipStatus,
-  OrganizationType,
-  OwnershipType,
-  TripDirection,
-  TripEventSource,
-  TripEventStatus,
-  TripEventType,
-  TripParticipantRole,
-  TripStatus,
-  TripType,
-  VehicleType,
-  VisibilityLevel
+import {
+  getRolePermissions,
+  hasAnyOrganizationPermission,
+  hasOrganizationPermission,
+  type MembershipRole,
+  type MembershipStatus,
+  type OrganizationPermission,
+  type OrganizationType,
+  type OwnershipType,
+  type TripDirection,
+  type TripEventSource,
+  type TripEventStatus,
+  type TripEventType,
+  type TripParticipantRole,
+  type TripStatus,
+  type TripType,
+  type VehicleType,
+  type VisibilityLevel
 } from '@gatesync/shared';
 import type {
+  ApiCurrentUser,
   ApiDashboardSummary,
   ApiCuaKhauSoDeclarationList,
   ApiCuaKhauSoSession,
@@ -46,6 +51,25 @@ export type OperationsOrganizationContext = {
   controlScore: string;
   tripBadge?: string;
   notice?: string;
+  currentUser?: OperationsCurrentUser;
+};
+
+export type OperationsCurrentUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: MembershipRole;
+  permissions: OrganizationPermission[];
+  activeOrganizationCount: number;
+  canReadTrips: boolean;
+  canManageTrips: boolean;
+  canManageMembers: boolean;
+  canManageFleet: boolean;
+  canUseCuaKhauSoIntegration: boolean;
+  canConnectCuaKhauSoIntegration: boolean;
+  canSyncCuaKhauSoIntegration: boolean;
+  canManageBilling: boolean;
+  canOpenAdmin: boolean;
 };
 
 export type OperationsTripEvent = {
@@ -171,6 +195,7 @@ export type AdminOrganizationProfile = {
   currentUserRole: MembershipRole;
   canManageMembers: boolean;
   canManageFleet: boolean;
+  canOpenAdmin: boolean;
 };
 
 export type AdminMember = {
@@ -278,6 +303,7 @@ export function formatApiDateTime(value?: string | null) {
 
 export function toApiDashboardView(
   organization: ApiOrganization,
+  currentUser: ApiCurrentUser,
   summary: ApiDashboardSummary,
   featuredTrips: ApiTripSummary[]
 ): DashboardViewData {
@@ -286,7 +312,7 @@ export function toApiDashboardView(
   const activeTrips = summary.metrics.activeTrips;
 
   return {
-    organization: toOrganizationContext(organization, activeTrips),
+    organization: toOrganizationContext(organization, currentUser, activeTrips),
     metrics: [
       {
         label: 'Chuyến đang vận hành',
@@ -337,11 +363,12 @@ export function toApiDashboardView(
 
 export function toApiTripsView(
   organization: ApiOrganization,
+  currentUser: ApiCurrentUser,
   trips: ApiTripSummary[],
   filters: ListTripsParams
 ): TripsViewData {
   return {
-    organization: toOrganizationContext(organization, trips.length),
+    organization: toOrganizationContext(organization, currentUser, trips.length),
     trips: trips.map(toTripSummaryView),
     filters
   };
@@ -349,13 +376,14 @@ export function toApiTripsView(
 
 export function toApiTripDetailView(
   organization: ApiOrganization,
+  currentUser: ApiCurrentUser,
   trip: ApiTripDetail,
   events: ApiTripEvent[]
 ): TripDetailViewData {
   const summary = toTripSummaryView(trip);
 
   return {
-    organization: toOrganizationContext(organization),
+    organization: toOrganizationContext(organization, currentUser),
     trip: {
       ...summary,
       shipment: {
@@ -385,14 +413,16 @@ export function toApiTripDetailView(
 
 export function toApiAdminView(
   organization: ApiOrganization,
+  currentUser: ApiCurrentUser,
   memberships: ApiMembership[],
   vehicles: ApiVehicle[],
   drivers: ApiDriverProfile[]
 ): AdminViewData {
   const currentUserRole = organization.currentUserMembership.role;
+  const currentUserContext = toCurrentUserContext(organization, currentUser);
 
   return {
-    organization: toOrganizationContext(organization),
+    organization: toOrganizationContext(organization, currentUser),
     profile: {
       id: organization.id,
       name: organization.name,
@@ -402,11 +432,9 @@ export function toApiAdminView(
       email: organization.email ?? 'Chưa cập nhật',
       phone: organization.phone ?? 'Chưa cập nhật',
       currentUserRole,
-      canManageMembers: currentUserRole === 'OWNER' || currentUserRole === 'ADMIN',
-      canManageFleet:
-        currentUserRole === 'OWNER' ||
-        currentUserRole === 'ADMIN' ||
-        currentUserRole === 'DISPATCHER'
+      canManageMembers: currentUserContext.canManageMembers,
+      canManageFleet: currentUserContext.canManageFleet,
+      canOpenAdmin: currentUserContext.canOpenAdmin
     },
     members: memberships.map(toAdminMemberView),
     vehicles: vehicles.map(toAdminVehicleView),
@@ -416,13 +444,15 @@ export function toApiAdminView(
 
 export function toOrganizationContext(
   organization: ApiOrganization,
+  currentUser: ApiCurrentUser,
   activeTripCount?: number
 ): OperationsOrganizationContext {
   const context: OperationsOrganizationContext = {
     id: organization.id,
     name: organization.name,
     type: organization.type,
-    controlScore: 'API'
+    controlScore: 'API',
+    currentUser: toCurrentUserContext(organization, currentUser)
   };
 
   if (activeTripCount !== undefined) {
@@ -430,6 +460,41 @@ export function toOrganizationContext(
   }
 
   return context;
+}
+
+function toCurrentUserContext(
+  organization: ApiOrganization,
+  currentUser: ApiCurrentUser
+): OperationsCurrentUser {
+  const role = organization.currentUserMembership.role;
+  const activeOrganizationCount = currentUser.memberships.filter(
+    (membership) => membership.status === 'ACTIVE'
+  ).length;
+
+  return {
+    id: currentUser.id,
+    name: currentUser.fullName?.trim() || currentUser.email || 'Người dùng GateSync',
+    email: currentUser.email ?? 'Chưa cập nhật email',
+    role,
+    permissions: getRolePermissions(role),
+    activeOrganizationCount,
+    canReadTrips: hasOrganizationPermission(role, 'trips:read'),
+    canManageTrips: hasOrganizationPermission(role, 'trips:manage'),
+    canManageMembers: hasOrganizationPermission(role, 'memberships:manage'),
+    canManageFleet: hasOrganizationPermission(role, 'fleet:manage'),
+    canUseCuaKhauSoIntegration: hasOrganizationPermission(role, 'integrations:cua-khau-so:read'),
+    canConnectCuaKhauSoIntegration: hasOrganizationPermission(
+      role,
+      'integrations:cua-khau-so:connect'
+    ),
+    canSyncCuaKhauSoIntegration: hasOrganizationPermission(role, 'integrations:cua-khau-so:sync'),
+    canManageBilling: hasOrganizationPermission(role, 'billing:manage'),
+    canOpenAdmin: hasAnyOrganizationPermission(role, [
+      'organizations:update',
+      'memberships:manage',
+      'fleet:manage'
+    ])
+  };
 }
 
 export function toTripSummaryView(trip: ApiTripSummary): OperationsTripSummary {

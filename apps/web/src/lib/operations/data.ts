@@ -1,5 +1,7 @@
 import { gatesyncApi } from '@/lib/api/gatesync';
 import type {
+  ApiCurrentUser,
+  ApiOrganization,
   CreateDriverPayload,
   CuaKhauSoLoginPayload,
   CreateTripEventPayload,
@@ -35,13 +37,13 @@ export async function loadDashboardData(): Promise<DashboardViewData> {
     return fallback.getDevDashboardData(session.reason);
   }
 
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization, currentUser } = await resolveActiveOrganization(session.accessToken);
   const [summary, featuredTrips] = await Promise.all([
     gatesyncApi.getDashboardSummary(organization.id, { accessToken: session.accessToken }),
     gatesyncApi.listTrips(organization.id, { limit: 8 }, { accessToken: session.accessToken })
   ]);
 
-  return toApiDashboardView(organization, summary, featuredTrips);
+  return toApiDashboardView(organization, currentUser, summary, featuredTrips);
 }
 
 export async function loadTripsData(filters: ListTripsParams): Promise<TripsViewData> {
@@ -52,12 +54,12 @@ export async function loadTripsData(filters: ListTripsParams): Promise<TripsView
     return fallback.getDevTripsData(filters, session.reason);
   }
 
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization, currentUser } = await resolveActiveOrganization(session.accessToken);
   const trips = await gatesyncApi.listTrips(organization.id, filters, {
     accessToken: session.accessToken
   });
 
-  return toApiTripsView(organization, trips, filters);
+  return toApiTripsView(organization, currentUser, trips, filters);
 }
 
 export async function loadTripDetailData(tripId: string): Promise<TripDetailViewData> {
@@ -68,13 +70,13 @@ export async function loadTripDetailData(tripId: string): Promise<TripDetailView
     return fallback.getDevTripDetailData(tripId, session.reason);
   }
 
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization, currentUser } = await resolveActiveOrganization(session.accessToken);
   const [trip, events] = await Promise.all([
     gatesyncApi.getTrip(organization.id, tripId, { accessToken: session.accessToken }),
     gatesyncApi.listTripEvents(organization.id, tripId, { accessToken: session.accessToken })
   ]);
 
-  return toApiTripDetailView(organization, trip, events);
+  return toApiTripDetailView(organization, currentUser, trip, events);
 }
 
 export async function loadAdminData(): Promise<AdminViewData> {
@@ -85,14 +87,14 @@ export async function loadAdminData(): Promise<AdminViewData> {
     return fallback.getDevAdminData(session.reason);
   }
 
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization, currentUser } = await resolveActiveOrganization(session.accessToken);
   const [memberships, vehicles, drivers] = await Promise.all([
     gatesyncApi.listMemberships(organization.id, { accessToken: session.accessToken }),
     gatesyncApi.listVehicles(organization.id, { accessToken: session.accessToken }),
     gatesyncApi.listDrivers(organization.id, { accessToken: session.accessToken })
   ]);
 
-  return toApiAdminView(organization, memberships, vehicles, drivers);
+  return toApiAdminView(organization, currentUser, memberships, vehicles, drivers);
 }
 
 export async function loadCuaKhauSoData(
@@ -105,7 +107,7 @@ export async function loadCuaKhauSoData(
     return fallback.getDevCuaKhauSoData(filters, session.reason);
   }
 
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization, currentUser } = await resolveActiveOrganization(session.accessToken);
   const sourceSession = await gatesyncApi.getCuaKhauSoSession(organization.id, {
     accessToken: session.accessToken
   });
@@ -121,7 +123,11 @@ export async function loadCuaKhauSoData(
       };
 
   return {
-    organization: toOrganizationContext(organization, declarations.declarations.length),
+    organization: toOrganizationContext(
+      organization,
+      currentUser,
+      declarations.declarations.length
+    ),
     session: sourceSession,
     declarations
   };
@@ -129,7 +135,7 @@ export async function loadCuaKhauSoData(
 
 export async function connectCuaKhauSo(payload: CuaKhauSoLoginPayload) {
   const session = await resolveWriteSession();
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization } = await resolveActiveOrganization(session.accessToken);
 
   return gatesyncApi.connectCuaKhauSo(organization.id, payload, {
     accessToken: session.accessToken
@@ -138,7 +144,7 @@ export async function connectCuaKhauSo(payload: CuaKhauSoLoginPayload) {
 
 export async function getCuaKhauSoDeclaration(externalId: string) {
   const session = await resolveWriteSession();
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization } = await resolveActiveOrganization(session.accessToken);
 
   return gatesyncApi.getCuaKhauSoDeclaration(organization.id, externalId, {
     accessToken: session.accessToken
@@ -150,7 +156,7 @@ export async function syncCuaKhauSoDeclaration(
   payload: SyncCuaKhauSoDeclarationPayload = {}
 ) {
   const session = await resolveWriteSession();
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization } = await resolveActiveOrganization(session.accessToken);
 
   return gatesyncApi.syncCuaKhauSoDeclaration(organization.id, externalId, payload, {
     accessToken: session.accessToken
@@ -166,7 +172,7 @@ export async function createManualTripEvent(tripId: string, payload: CreateTripE
     );
   }
 
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization } = await resolveActiveOrganization(session.accessToken);
 
   return gatesyncApi.createTripEvent(
     organization.id,
@@ -179,14 +185,14 @@ export async function createManualTripEvent(tripId: string, payload: CreateTripE
 
 export async function createAdminVehicle(payload: CreateVehiclePayload) {
   const session = await resolveWriteSession();
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization } = await resolveActiveOrganization(session.accessToken);
 
   return gatesyncApi.createVehicle(organization.id, payload, { accessToken: session.accessToken });
 }
 
 export async function updateAdminVehicle(vehicleId: string, payload: UpdateVehiclePayload) {
   const session = await resolveWriteSession();
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization } = await resolveActiveOrganization(session.accessToken);
 
   return gatesyncApi.updateVehicle(organization.id, vehicleId, payload, {
     accessToken: session.accessToken
@@ -195,7 +201,7 @@ export async function updateAdminVehicle(vehicleId: string, payload: UpdateVehic
 
 export async function deleteAdminVehicle(vehicleId: string) {
   const session = await resolveWriteSession();
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization } = await resolveActiveOrganization(session.accessToken);
 
   return gatesyncApi.deleteVehicle(organization.id, vehicleId, {
     accessToken: session.accessToken
@@ -204,14 +210,14 @@ export async function deleteAdminVehicle(vehicleId: string) {
 
 export async function createAdminDriver(payload: CreateDriverPayload) {
   const session = await resolveWriteSession();
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization } = await resolveActiveOrganization(session.accessToken);
 
   return gatesyncApi.createDriver(organization.id, payload, { accessToken: session.accessToken });
 }
 
 export async function updateAdminDriver(driverProfileId: string, payload: UpdateDriverPayload) {
   const session = await resolveWriteSession();
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization } = await resolveActiveOrganization(session.accessToken);
 
   return gatesyncApi.updateDriver(organization.id, driverProfileId, payload, {
     accessToken: session.accessToken
@@ -220,7 +226,7 @@ export async function updateAdminDriver(driverProfileId: string, payload: Update
 
 export async function deleteAdminDriver(driverProfileId: string) {
   const session = await resolveWriteSession();
-  const organization = await resolveActiveOrganization(session.accessToken);
+  const { organization } = await resolveActiveOrganization(session.accessToken);
 
   return gatesyncApi.deleteDriver(organization.id, driverProfileId, {
     accessToken: session.accessToken
@@ -239,8 +245,13 @@ async function resolveWriteSession() {
   return session;
 }
 
-async function resolveActiveOrganization(accessToken: string) {
-  const organizations = await gatesyncApi.listOrganizations({ accessToken });
+async function resolveActiveOrganization(
+  accessToken: string
+): Promise<{ organization: ApiOrganization; currentUser: ApiCurrentUser }> {
+  const [currentUser, organizations] = await Promise.all([
+    gatesyncApi.getMe({ accessToken }),
+    gatesyncApi.listOrganizations({ accessToken })
+  ]);
   const activeOrganization = organizations.find(
     (organization) => organization.currentUserMembership.status === 'ACTIVE'
   );
@@ -286,7 +297,10 @@ async function resolveActiveOrganization(accessToken: string) {
     );
   }
 
-  return activeOrganization;
+  return {
+    organization: activeOrganization,
+    currentUser
+  };
 }
 
 function createIdempotencyKey(tripId: string) {

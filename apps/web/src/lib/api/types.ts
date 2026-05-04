@@ -45,6 +45,12 @@ export type ApiUserProfile = {
   phone?: string | null;
 };
 
+export type ApiCurrentUser = ApiUserProfile & {
+  supabaseUserId: string;
+  memberships: ApiMembership[];
+  role?: string;
+};
+
 export type ApiVehicle = {
   id: string;
   organizationId?: string;

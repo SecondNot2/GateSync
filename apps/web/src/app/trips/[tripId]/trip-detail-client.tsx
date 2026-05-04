@@ -139,6 +139,7 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
   const trip = data?.trip;
   const latestEvent = trip?.events[trip.events.length - 1];
   const manualActionOptions = resolveManualEventOptions(trip?.availableManualActions);
+  const canManageTrips = data?.organization.currentUser?.canManageTrips ?? true;
 
   return (
     <AppShell
@@ -232,25 +233,32 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
                 <div className="mt-4 grid gap-3">
                   <button
                     type="button"
-                    disabled={manualActionOptions.length === 0}
+                    disabled={!canManageTrips || manualActionOptions.length === 0}
                     onClick={() => setIsFormOpen((value) => !value)}
                     className="min-h-12 rounded-2xl bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
-                    Ghi nhận sự kiện mới
+                    {canManageTrips ? 'Ghi nhận sự kiện mới' : 'Chỉ xem timeline'}
                   </button>
                   {manualActionOptions.slice(0, 4).map((option) => (
                     <button
                       key={option.value}
                       type="button"
+                      disabled={!canManageTrips}
                       onClick={() => {
                         setEventType(option.value);
                         setIsFormOpen(true);
                       }}
-                      className="min-h-12 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-left text-sm font-semibold text-sky-800 transition hover:bg-sky-100"
+                      className="min-h-12 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-left text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-400"
                     >
                       {option.label}
                     </button>
                   ))}
+                  {!canManageTrips ? (
+                    <p className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      Vai trò hiện tại chỉ được xem dữ liệu chuyến. Mọi thao tác ghi sự kiện vẫn
+                      được API kiểm tra RBAC trước khi lưu.
+                    </p>
+                  ) : null}
                   {manualActionOptions.length === 0 ? (
                     <p className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                       Chuyến đã kết thúc hoặc chưa có thao tác thủ công phù hợp.

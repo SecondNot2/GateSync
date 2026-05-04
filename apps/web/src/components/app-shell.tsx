@@ -3,7 +3,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { SignOutButton } from '@/components/sign-out-button';
 import type { OperationsOrganizationContext } from '@/lib/operations/view-model';
-import { organizationTypeLabels } from '@/lib/ui-labels';
+import { membershipRoleLabels, organizationTypeLabels } from '@/lib/ui-labels';
 
 type AppNavKey = 'dashboard' | 'trips' | 'integrations' | 'admin';
 
@@ -16,6 +16,8 @@ type AppShellProps = {
   organization?: OperationsOrganizationContext;
   children: ReactNode;
 };
+
+type AppNavItem = { key: AppNavKey; label: string; href: string; badge?: string };
 
 export function AppShell({
   activeNav,
@@ -31,7 +33,8 @@ export function AppShell({
     type: 'LOGISTICS_COMPANY',
     controlScore: '--'
   };
-  const tripsNavItem: { key: AppNavKey; label: string; href: string; badge?: string } = {
+  const currentUser = currentOrganization.currentUser;
+  const tripsNavItem: AppNavItem = {
     key: 'trips',
     label: 'Quản lý chuyến',
     href: '/trips'
@@ -41,12 +44,25 @@ export function AppShell({
     tripsNavItem.badge = currentOrganization.tripBadge;
   }
 
-  const navItems: Array<{ key: AppNavKey; label: string; href: string; badge?: string }> = [
-    { key: 'dashboard', label: 'Bảng điều phối', href: '/dashboard' },
-    tripsNavItem,
-    { key: 'integrations', label: 'Tích hợp dữ liệu', href: '/integrations/cua-khau-so' },
-    { key: 'admin', label: 'Quản trị nội bộ', href: '/admin' }
+  const navItems: AppNavItem[] = [
+    { key: 'dashboard', label: 'Bảng điều phối', href: '/dashboard' }
   ];
+
+  if (currentUser?.canReadTrips !== false) {
+    navItems.push(tripsNavItem);
+  }
+
+  if (currentUser?.canUseCuaKhauSoIntegration !== false) {
+    navItems.push({
+      key: 'integrations',
+      label: 'Tích hợp dữ liệu',
+      href: '/integrations/cua-khau-so'
+    });
+  }
+
+  if (currentUser?.canOpenAdmin !== false) {
+    navItems.push({ key: 'admin', label: 'Quản trị nội bộ', href: '/admin' });
+  }
 
   return (
     <main className="min-h-screen px-3 pb-24 pt-3 text-slate-950 sm:px-6 sm:pb-6 lg:px-8">
@@ -66,11 +82,13 @@ export function AppShell({
               <p className="truncate text-xs text-slate-500">{currentOrganization.name}</p>
             </div>
           </Link>
-          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-right">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-700">
-              Kiểm soát
+          <div className="rounded-2xl border border-sky-100 bg-sky-50 px-3 py-2 text-right">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-sky-700">
+              Vai trò
             </p>
-            <p className="text-sm font-bold text-emerald-700">{currentOrganization.controlScore}</p>
+            <p className="max-w-28 truncate text-sm font-bold text-sky-700">
+              {currentUser ? membershipRoleLabels[currentUser.role] : 'Đang xác thực'}
+            </p>
           </div>
         </header>
 
@@ -129,14 +147,29 @@ export function AppShell({
             })}
           </nav>
 
-          <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 p-4 text-slate-950">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">
-              Ca trực hôm nay
+          <div className="mt-5 rounded-3xl border border-slate-100 bg-slate-50 p-4 text-slate-950">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+              Người dùng
             </p>
-            <p className="mt-2 text-xl font-bold">16:00 - 22:00</p>
-            <p className="mt-2 text-sm text-slate-700">
-              7 cảnh báo mới cần điều phối viên xác nhận.
+            <p className="mt-2 text-sm font-bold">{currentUser?.name ?? 'Đang xác thực'}</p>
+            <p className="mt-1 truncate text-xs text-slate-500">
+              {currentUser?.email ?? 'Phiên GateSync'}
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {currentUser ? (
+                <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+                  {membershipRoleLabels[currentUser.role]}
+                </span>
+              ) : null}
+              {currentUser && currentUser.activeOrganizationCount > 1 ? (
+                <Link
+                  href="/onboarding"
+                  className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:text-sky-700"
+                >
+                  Đổi tổ chức
+                </Link>
+              ) : null}
+            </div>
           </div>
 
           <div className="mt-5">
@@ -159,10 +192,10 @@ export function AppShell({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:flex-shrink-0">
                 <div className="hidden rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 sm:block">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    Điểm kiểm soát
+                    Vai trò phiên
                   </p>
-                  <p className="mt-1 text-2xl font-bold text-emerald-600">
-                    {currentOrganization.controlScore}
+                  <p className="mt-1 text-sm font-bold text-slate-800">
+                    {currentUser ? membershipRoleLabels[currentUser.role] : 'Đang xác thực'}
                   </p>
                 </div>
                 <SignOutButton className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-center text-sm font-semibold text-slate-600 shadow-soft transition hover:border-rose-200 hover:text-rose-600" />
@@ -174,7 +207,7 @@ export function AppShell({
           {children}
         </section>
       </div>
-      <nav className="fixed inset-x-3 bottom-3 z-30 grid grid-cols-4 gap-2 rounded-3xl border border-slate-200 bg-white/95 p-2 shadow-soft backdrop-blur lg:hidden">
+      <nav className="fixed inset-x-3 bottom-3 z-30 flex gap-2 overflow-x-auto rounded-3xl border border-slate-200 bg-white/95 p-2 shadow-soft backdrop-blur lg:hidden">
         {navItems.map((item) => {
           const isActive = item.key === activeNav;
 
@@ -182,7 +215,7 @@ export function AppShell({
             <Link
               key={item.key}
               href={item.href}
-              className={`flex min-h-12 flex-col items-center justify-center rounded-2xl px-2 py-2 text-center text-xs font-semibold transition ${
+              className={`flex min-h-12 min-w-[5rem] flex-1 flex-col items-center justify-center rounded-2xl px-2 py-2 text-center text-xs font-semibold transition ${
                 isActive ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >

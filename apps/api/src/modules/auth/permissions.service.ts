@@ -1,24 +1,19 @@
 import { Injectable } from '@nestjs/common';
+import type { OrganizationPermission } from '@gatesync/shared';
 import type { MembershipRole } from '@prisma/client';
 import type { RequestMembership } from './request-user';
 
-export type OrganizationPermission =
-  | 'organizations:read'
-  | 'organizations:update'
-  | 'memberships:manage'
-  | 'fleet:manage'
-  | 'trips:manage'
-  | 'trips:read'
-  | 'billing:manage';
-
-const rolePermissions: Record<MembershipRole, OrganizationPermission[]> = {
+const rolePermissions = {
   OWNER: [
     'organizations:read',
     'organizations:update',
     'memberships:manage',
     'fleet:manage',
-    'trips:manage',
     'trips:read',
+    'trips:manage',
+    'integrations:cua-khau-so:read',
+    'integrations:cua-khau-so:sync',
+    'integrations:cua-khau-so:connect',
     'billing:manage'
   ],
   ADMIN: [
@@ -26,20 +21,38 @@ const rolePermissions: Record<MembershipRole, OrganizationPermission[]> = {
     'organizations:update',
     'memberships:manage',
     'fleet:manage',
+    'trips:read',
     'trips:manage',
-    'trips:read'
+    'integrations:cua-khau-so:read',
+    'integrations:cua-khau-so:sync',
+    'integrations:cua-khau-so:connect'
   ],
-  DISPATCHER: ['organizations:read', 'fleet:manage', 'trips:manage', 'trips:read'],
-  DOCUMENT_STAFF: ['organizations:read', 'trips:manage', 'trips:read'],
-  FIELD_OPERATOR: ['organizations:read', 'trips:manage', 'trips:read'],
+  DISPATCHER: [
+    'organizations:read',
+    'fleet:manage',
+    'trips:read',
+    'trips:manage',
+    'integrations:cua-khau-so:read',
+    'integrations:cua-khau-so:sync',
+    'integrations:cua-khau-so:connect'
+  ],
+  DOCUMENT_STAFF: [
+    'organizations:read',
+    'trips:read',
+    'trips:manage',
+    'integrations:cua-khau-so:read',
+    'integrations:cua-khau-so:sync',
+    'integrations:cua-khau-so:connect'
+  ],
+  FIELD_OPERATOR: ['organizations:read', 'trips:read', 'trips:manage'],
   VIEWER: ['organizations:read', 'trips:read'],
   BILLING_ADMIN: ['organizations:read', 'billing:manage']
-};
+} satisfies Record<MembershipRole, OrganizationPermission[]>;
 
 @Injectable()
 export class PermissionsService {
   can(role: MembershipRole, permission: OrganizationPermission): boolean {
-    return rolePermissions[role]?.includes(permission) ?? false;
+    return rolePermissions[role].some((item) => item === permission);
   }
 
   hasActiveMembership(membership: RequestMembership | undefined): membership is RequestMembership {
