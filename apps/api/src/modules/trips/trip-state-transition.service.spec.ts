@@ -7,8 +7,19 @@ const service = new TripStateTransitionService();
 
 test('projects valid trip events into current status updates', () => {
   assert.equal(service.assertCanApplyEvent('PLANNED', 'DEPARTED'), 'IN_PROGRESS');
-  assert.equal(service.assertCanApplyEvent('IN_PROGRESS', 'WAITING_YARD_ENTRY'), 'WAITING_YARD_ENTRY');
-  assert.equal(service.assertCanApplyEvent('WAITING_YARD_ENTRY', 'YARD_ENTRY_CONFIRMED'), 'IN_YARD');
+  assert.equal(
+    service.assertCanApplyEvent('IN_PROGRESS', 'WAITING_YARD_ENTRY'),
+    'WAITING_YARD_ENTRY'
+  );
+  assert.equal(
+    service.assertCanApplyEvent('WAITING_YARD_ENTRY', 'YARD_ENTRY_CONFIRMED'),
+    'IN_YARD'
+  );
+  assert.equal(
+    service.assertCanApplyEvent('PLANNED', 'DECLARATION_SUBMITTED'),
+    'CUSTOMS_PROCESSING'
+  );
+  assert.equal(service.assertCanApplyEvent('AT_BORDER_GATE', 'YARD_ENTRY_CONFIRMED'), 'IN_YARD');
 });
 
 test('allows operational notes without changing trip status', () => {
@@ -16,13 +27,13 @@ test('allows operational notes without changing trip status', () => {
 });
 
 test('blocks invalid state transitions', () => {
-  assert.throws(
-    () => service.assertCanApplyEvent('PLANNED', 'YARD_ENTRY_CONFIRMED'),
-    BadRequestException
-  );
+  assert.throws(() => service.assertCanApplyEvent('IN_YARD', 'DEPARTED'), BadRequestException);
 });
 
 test('blocks status-changing events after terminal status', () => {
   assert.throws(() => service.assertCanApplyEvent('COMPLETED', 'DEPARTED'), BadRequestException);
-  assert.throws(() => service.assertCanApplyEvent('CANCELLED', 'TRIP_COMPLETED'), BadRequestException);
+  assert.throws(
+    () => service.assertCanApplyEvent('CANCELLED', 'TRIP_COMPLETED'),
+    BadRequestException
+  );
 });

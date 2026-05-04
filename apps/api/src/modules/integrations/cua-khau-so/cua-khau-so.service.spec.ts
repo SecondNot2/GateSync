@@ -28,7 +28,13 @@ const requestUser: RequestUser = {
 
 function loadFixture(): CuaKhauSoDeclarationDetail {
   const raw = JSON.parse(
-    readFileSync(path.resolve(process.cwd(), 'src/modules/integrations/cua-khau-so/__fixtures__/raw-json.json'), 'utf8')
+    readFileSync(
+      path.resolve(
+        process.cwd(),
+        'src/modules/integrations/cua-khau-so/__fixtures__/raw-json.json'
+      ),
+      'utf8'
+    )
   ) as { data: CuaKhauSoDeclarationDetail };
 
   return raw.data;
@@ -204,6 +210,129 @@ test('syncDeclaration upserts a CustomsDeclaration and records idempotent TripEv
     eventCalls.every((call) =>
       call.idempotencyKey?.includes('00000000-0000-4000-8000-000000000001')
     ),
+    true
+  );
+});
+
+test('syncDeclaration creates a GateSync Trip when no matching trip exists', async () => {
+  const fixture = loadFixture();
+  const sessionStore = new CuaKhauSoSessionStore();
+  sessionStore.save('00000000-0000-4000-8000-000000000001', requestUser.id, {
+    accessToken: 'source-token',
+    refreshCookies: [],
+    username: 'source-user'
+  });
+  let tripCreateData: Record<string, unknown> | undefined;
+  const createdParticipants: Record<string, unknown>[] = [];
+  const createdTripEvents: Record<string, unknown>[] = [];
+  const createdAuditActions: string[] = [];
+  const eventCalls: Array<{
+    tripId: string;
+    payload: Record<string, unknown>;
+    idempotencyKey?: string;
+  }> = [];
+  const tx = {
+    customsDeclaration: {
+      upsert: async () => ({
+        id: '00000000-0000-4000-8000-000000000013',
+        declarationNumber: '2026050300533'
+      })
+    },
+    trip: {
+      findFirst: async () => null,
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        tripCreateData = data;
+        return {
+          id: '00000000-0000-4000-8000-000000000021',
+          tripCode: data.tripCode,
+          customsDeclarationId: data.customsDeclarationId
+        };
+      },
+      update: async () => undefined
+    },
+    tripParticipant: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        createdParticipants.push(data);
+        return data;
+      }
+    },
+    tripEvent: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        createdTripEvents.push(data);
+        return data;
+      }
+    },
+    integrationAccount: {
+      update: async () => ({ id: 'account-1' })
+    },
+    auditLog: {
+      create: async ({ data }: { data: { action: string } }) => {
+        createdAuditActions.push(data.action);
+        return data;
+      }
+    }
+  };
+  const prisma = {
+    integrationAccount: {
+      upsert: async () => ({
+        id: 'account-1'
+      })
+    },
+    $transaction: async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)
+  };
+  const client = {
+    getDeclarationDetail: async () => ({
+      data: fixture
+    })
+  };
+  const tripsService = {
+    createEvent: async (
+      _user: RequestUser,
+      _organizationId: string,
+      tripId: string,
+      payload: Record<string, unknown>,
+      idempotencyKey?: string
+    ) => {
+      const eventCall: {
+        tripId: string;
+        payload: Record<string, unknown>;
+        idempotencyKey?: string;
+      } = { tripId, payload };
+
+      if (idempotencyKey !== undefined) {
+        eventCall.idempotencyKey = idempotencyKey;
+      }
+
+      eventCalls.push(eventCall);
+      return {
+        id: `event-${eventCalls.length}`,
+        eventType: payload.eventType,
+        occurredAt: payload.occurredAt
+      };
+    }
+  };
+  const service = createService({ prisma, client, tripsService, sessionStore });
+
+  const result = await service.syncDeclaration(
+    requestUser,
+    '00000000-0000-4000-8000-000000000001',
+    fixture.id,
+    {}
+  );
+
+  assert.equal(result.linkedBy, 'created');
+  assert.equal(result.linkedTripId, '00000000-0000-4000-8000-000000000021');
+  assert.equal(tripCreateData?.tripCode, '2026050300533');
+  assert.equal(tripCreateData?.tripType, 'IMPORT_WITH_GOODS');
+  assert.equal(tripCreateData?.direction, 'IMPORT');
+  assert.equal(tripCreateData?.customsDeclarationId, '00000000-0000-4000-8000-000000000013');
+  assert.equal(createdParticipants[0]?.role, 'OWNER_ORG');
+  assert.equal(createdTripEvents[0]?.eventType, 'TRIP_CREATED');
+  assert.equal(createdAuditActions.includes('integration.cua_khau_so.create_trip'), true);
+  assert.equal(createdAuditActions.includes('integration.cua_khau_so.sync_declaration'), true);
+  assert.equal(eventCalls.length > 0, true);
+  assert.equal(
+    eventCalls.every((call) => call.tripId === '00000000-0000-4000-8000-000000000021'),
     true
   );
 });

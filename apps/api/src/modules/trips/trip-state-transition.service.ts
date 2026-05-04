@@ -24,7 +24,18 @@ const eventStatusProjection: Partial<Record<TripEventType, TripStatus>> = {
 };
 
 const allowedTransitions: Record<TripStatus, readonly TripStatus[]> = {
-  PLANNED: ['PLANNED', 'IN_PROGRESS', 'CANCELLED'],
+  PLANNED: [
+    'PLANNED',
+    'IN_PROGRESS',
+    'WAITING_YARD_ENTRY',
+    'IN_YARD',
+    'AT_BORDER_GATE',
+    'CUSTOMS_PROCESSING',
+    'INSPECTION_REQUIRED',
+    'BLOCKED',
+    'COMPLETED',
+    'CANCELLED'
+  ],
   IN_PROGRESS: [
     'IN_PROGRESS',
     'WAITING_YARD_ENTRY',
@@ -39,6 +50,7 @@ const allowedTransitions: Record<TripStatus, readonly TripStatus[]> = {
   IN_YARD: ['IN_YARD', 'AT_BORDER_GATE', 'CUSTOMS_PROCESSING', 'BLOCKED', 'COMPLETED', 'CANCELLED'],
   AT_BORDER_GATE: [
     'AT_BORDER_GATE',
+    'IN_YARD',
     'CUSTOMS_PROCESSING',
     'INSPECTION_REQUIRED',
     'BLOCKED',

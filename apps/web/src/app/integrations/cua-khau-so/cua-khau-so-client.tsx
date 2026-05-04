@@ -48,6 +48,13 @@ const cuaKhauSoSyncRoleLabels = membershipRoles
   .filter((role) => hasOrganizationPermission(role, 'integrations:cua-khau-so:sync'))
   .map((role) => membershipRoleLabels[role])
   .join(', ');
+const cuaKhauSoLinkedByLabels: Record<ApiCuaKhauSoSyncResult['linkedBy'], string> = {
+  requested: 'theo chuyến được chọn',
+  declaration: 'theo tờ khai đã đồng bộ trước đó',
+  tripCode: 'theo mã chuyến trùng số tờ khai',
+  created: 'đã tạo chuyến mới từ tờ khai',
+  none: 'chưa liên kết chuyến'
+};
 
 export function CuaKhauSoClient() {
   const [data, setData] = useState<CuaKhauSoViewData>();
@@ -614,7 +621,8 @@ function DeclarationDetailPanel({
             {syncResult.skippedEvents.length} sự kiện.
           </p>
           <p className="mt-1">
-            Liên kết chuyến: {syncResult.linkedTripId ?? 'chưa tự động liên kết'}.
+            Liên kết chuyến: {cuaKhauSoLinkedByLabels[syncResult.linkedBy]}
+            {syncResult.linkedTripId ? ` (${syncResult.linkedTripId})` : ''}.
           </p>
         </div>
       ) : null}

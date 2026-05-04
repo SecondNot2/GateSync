@@ -5,7 +5,13 @@ import {
   NotFoundException,
   UnauthorizedException
 } from '@nestjs/common';
-import type { DeclarationStatus, DeclarationType, Prisma } from '@prisma/client';
+import type {
+  DeclarationStatus,
+  DeclarationType,
+  Prisma,
+  TripDirection,
+  TripType
+} from '@prisma/client';
 import type { RequestUser } from '../../auth/request-user';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TripsService } from '../../trips/trips.service';
@@ -20,6 +26,16 @@ type LinkedTrip = {
   id: string;
   tripCode: string;
   customsDeclarationId: string | null;
+};
+type LinkMode = 'requested' | 'declaration' | 'tripCode' | 'created' | 'none';
+type CustomsDeclarationSyncData = {
+  declarationNumber: string;
+  declarationType: DeclarationType;
+  customsOfficeCode?: string;
+  status: DeclarationStatus;
+  submittedAt?: Date;
+  approvedAt?: Date;
+  rejectedAt?: Date;
 };
 
 const integrationDisplayName = 'Cửa khẩu số';
@@ -113,9 +129,14 @@ export class CuaKhauSoService {
       });
       const linked = await this.resolveLinkedTrip(
         tx,
+        user,
         organizationId,
-        declaration.id,
-        detail,
+        {
+          id: declaration.id,
+          declarationNumber: declaration.declarationNumber
+        },
+        normalizedDeclaration,
+        syncedAt,
         dto.tripId
       );
 
@@ -273,11 +294,13 @@ export class CuaKhauSoService {
 
   private async resolveLinkedTrip(
     prisma: Prisma.TransactionClient,
+    user: RequestUser,
     organizationId: string,
-    declarationId: string,
-    detail: { numberOfDeclaration?: string | null },
+    declaration: { id: string; declarationNumber: string },
+    normalizedDeclaration: CustomsDeclarationSyncData,
+    syncedAt: Date,
     requestedTripId?: string
-  ): Promise<{ trip?: LinkedTrip; linkedBy: 'requested' | 'declaration' | 'tripCode' | 'none' }> {
+  ): Promise<{ trip?: LinkedTrip; linkedBy: LinkMode }> {
     if (requestedTripId) {
       const trip = await prisma.trip.findFirst({
         where: {
@@ -305,7 +328,7 @@ export class CuaKhauSoService {
     const linkedByDeclaration = await prisma.trip.findFirst({
       where: {
         organizationId,
-        customsDeclarationId: declarationId,
+        customsDeclarationId: declaration.id,
         deletedAt: null
       },
       select: {
@@ -322,7 +345,7 @@ export class CuaKhauSoService {
       };
     }
 
-    const declarationNumber = detail.numberOfDeclaration?.trim();
+    const declarationNumber = normalizedDeclaration.declarationNumber.trim();
 
     if (!declarationNumber) {
       return {
@@ -344,8 +367,18 @@ export class CuaKhauSoService {
     });
 
     if (!linkedByTripCode) {
+      const createdTrip = await this.createTripFromDeclaration(
+        prisma,
+        user,
+        organizationId,
+        declaration.id,
+        normalizedDeclaration,
+        syncedAt
+      );
+
       return {
-        linkedBy: 'none'
+        trip: createdTrip,
+        linkedBy: 'created'
       };
     }
 
@@ -355,14 +388,99 @@ export class CuaKhauSoService {
     };
   }
 
-  private toCustomsDeclarationWriteData(data: {
-    declarationType: DeclarationType;
-    customsOfficeCode?: string;
-    status: DeclarationStatus;
-    submittedAt?: Date;
-    approvedAt?: Date;
-    rejectedAt?: Date;
-  }) {
+  private async createTripFromDeclaration(
+    prisma: Prisma.TransactionClient,
+    user: RequestUser,
+    organizationId: string,
+    declarationId: string,
+    normalizedDeclaration: CustomsDeclarationSyncData,
+    syncedAt: Date
+  ): Promise<LinkedTrip> {
+    const tripCreateData: Prisma.TripUncheckedCreateInput = {
+      organizationId,
+      tripCode: normalizedDeclaration.declarationNumber.trim(),
+      tripType: this.toTripType(normalizedDeclaration.declarationType),
+      direction: this.toTripDirection(normalizedDeclaration.declarationType),
+      customsDeclarationId: declarationId,
+      currentStatus: 'PLANNED',
+      currentStatusUpdatedAt: syncedAt,
+      createdById: user.id
+    };
+
+    if (normalizedDeclaration.submittedAt) {
+      tripCreateData.plannedStartAt = normalizedDeclaration.submittedAt;
+    }
+
+    const trip = await prisma.trip.create({
+      data: tripCreateData,
+      select: {
+        id: true,
+        tripCode: true,
+        customsDeclarationId: true
+      }
+    });
+
+    await prisma.tripParticipant.create({
+      data: {
+        tripId: trip.id,
+        organizationId,
+        role: 'OWNER_ORG',
+        visibilityLevel: 'FULL'
+      }
+    });
+
+    await prisma.tripEvent.create({
+      data: {
+        tripId: trip.id,
+        organizationId,
+        eventType: 'TRIP_CREATED',
+        eventStatus: 'RECORDED',
+        source: 'SYSTEM',
+        occurredAt: syncedAt,
+        createdById: user.id,
+        note: `GateSync tạo chuyến từ tờ khai Cửa khẩu số ${normalizedDeclaration.declarationNumber}.`
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        organizationId,
+        actorUserId: user.id,
+        action: 'integration.cua_khau_so.create_trip',
+        entityType: 'Trip',
+        entityId: trip.id,
+        after: {
+          tripCode: trip.tripCode,
+          declarationNumber: normalizedDeclaration.declarationNumber,
+          customsDeclarationId: declarationId
+        }
+      }
+    });
+
+    return trip;
+  }
+
+  private toTripType(declarationType: DeclarationType): TripType {
+    if (declarationType === 'EXPORT') {
+      return 'EXPORT_WITH_GOODS';
+    }
+
+    if (declarationType === 'IMPORT') {
+      return 'IMPORT_WITH_GOODS';
+    }
+
+    return 'INTERNAL_TRANSFER';
+  }
+
+  private toTripDirection(declarationType: DeclarationType): TripDirection {
+    if (declarationType === 'EXPORT' || declarationType === 'IMPORT') {
+      return declarationType;
+    }
+
+    return 'UNKNOWN';
+  }
+
+  private toCustomsDeclarationWriteData(data: CustomsDeclarationSyncData) {
     const update: Prisma.CustomsDeclarationUncheckedUpdateInput = {
       declarationType: data.declarationType,
       status: data.status

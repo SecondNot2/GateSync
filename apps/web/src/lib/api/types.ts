@@ -394,7 +394,7 @@ export type ApiCuaKhauSoSyncResult = {
     id: string;
   };
   linkedTripId?: string;
-  linkedBy: 'requested' | 'declaration' | 'tripCode' | 'none';
+  linkedBy: 'requested' | 'declaration' | 'tripCode' | 'created' | 'none';
   recordedEvents: Array<{
     id: string;
     eventType: TripEventType;

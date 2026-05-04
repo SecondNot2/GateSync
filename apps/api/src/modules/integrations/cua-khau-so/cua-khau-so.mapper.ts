@@ -32,12 +32,12 @@ const procedureStepLabels = [
 @Injectable()
 export class CuaKhauSoMapper {
   mapListResponse(response: CuaKhauSoDeclarationListResponse): CuaKhauSoMappedList {
-    const listData = response.data?.listData ?? [];
+    const listData = this.resolveListData(response);
 
     return {
       declarations: listData.map((declaration) => this.mapSummary(declaration)),
-      totalCount: response.data?.totalCount ?? listData.length,
-      totalPage: response.data?.totalPage ?? 1,
+      totalCount: this.resolveTotalCount(response, listData.length),
+      totalPage: this.resolveTotalPage(response),
       message: this.nonEmpty(response.message, 'Đã tải dữ liệu Cửa khẩu số.')
     };
   }
@@ -541,7 +541,143 @@ export class CuaKhauSoMapper {
     return date;
   }
 
-  private nonEmpty(...values: Array<string | number | null | undefined>): string {
+  private resolveListData(response: CuaKhauSoDeclarationListResponse): CuaKhauSoDeclarationLite[] {
+    const responseRecord = this.toRecord(response);
+    const data = responseRecord?.data;
+    const dataRecord = this.toRecord(data);
+    const knownCandidates = [
+      dataRecord?.listData,
+      dataRecord?.items,
+      dataRecord?.records,
+      dataRecord?.rows,
+      responseRecord?.listData,
+      responseRecord?.items,
+      responseRecord?.records,
+      responseRecord?.rows
+    ];
+
+    for (const candidate of knownCandidates) {
+      const listData = this.asDeclarationArray(candidate, true);
+
+      if (listData) {
+        return listData;
+      }
+    }
+
+    return (
+      this.asDeclarationArray(data, true) ??
+      this.findDeclarationArray(data) ??
+      this.findDeclarationArray(response) ??
+      []
+    );
+  }
+
+  private resolveTotalCount(response: CuaKhauSoDeclarationListResponse, fallback: number) {
+    const responseRecord = this.toRecord(response);
+    const dataRecord = this.toRecord(responseRecord?.data);
+    const candidates = [
+      dataRecord?.totalCount,
+      dataRecord?.total,
+      dataRecord?.count,
+      dataRecord?.totalElements,
+      responseRecord?.totalCount,
+      responseRecord?.total,
+      responseRecord?.count,
+      responseRecord?.totalElements
+    ];
+
+    for (const candidate of candidates) {
+      const totalCount = this.toNumber(candidate);
+
+      if (totalCount !== undefined) {
+        return totalCount;
+      }
+    }
+
+    return fallback;
+  }
+
+  private resolveTotalPage(response: CuaKhauSoDeclarationListResponse) {
+    const responseRecord = this.toRecord(response);
+    const dataRecord = this.toRecord(responseRecord?.data);
+    const candidates = [
+      dataRecord?.totalPage,
+      dataRecord?.totalPages,
+      dataRecord?.pages,
+      responseRecord?.totalPage,
+      responseRecord?.totalPages,
+      responseRecord?.pages
+    ];
+
+    for (const candidate of candidates) {
+      const totalPage = this.toNumber(candidate);
+
+      if (totalPage !== undefined) {
+        return totalPage;
+      }
+    }
+
+    return 1;
+  }
+
+  private findDeclarationArray(value: unknown): CuaKhauSoDeclarationLite[] | undefined {
+    const record = this.toRecord(value);
+
+    if (!record) {
+      return undefined;
+    }
+
+    for (const candidate of Object.values(record)) {
+      const listData = this.asDeclarationArray(candidate, false);
+
+      if (listData) {
+        return listData;
+      }
+    }
+
+    return undefined;
+  }
+
+  private asDeclarationArray(
+    value: unknown,
+    allowEmpty: boolean
+  ): CuaKhauSoDeclarationLite[] | undefined {
+    if (!Array.isArray(value)) {
+      return undefined;
+    }
+
+    if (value.length === 0) {
+      return allowEmpty ? [] : undefined;
+    }
+
+    return this.isDeclarationLike(value[0]) ? (value as CuaKhauSoDeclarationLite[]) : undefined;
+  }
+
+  private isDeclarationLike(value: unknown): value is CuaKhauSoDeclarationLite {
+    const record = this.toRecord(value);
+    return Boolean(record && ('id' in record || 'numberOfDeclaration' in record));
+  }
+
+  private toRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  }
+
+  private toNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    return undefined;
+  }
+
+  private nonEmpty(...values: Array<string | number | null | undefined>) {
     for (const value of values) {
       const trimmed = this.trimToUndefined(value);
 

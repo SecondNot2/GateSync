@@ -49,6 +49,57 @@ test('CuaKhauSoMapper maps real fixture into declaration detail, steps and event
   );
 });
 
+test('CuaKhauSoMapper maps list response variants from Cửa khẩu số', () => {
+  const mapper = new CuaKhauSoMapper();
+  const declaration = {
+    id: '84b718cf-4a72-4c7e-91d8-24e51ae53154',
+    numberOfDeclaration: '2026050300533',
+    createDate: '2026-05-03T13:15:21.972699',
+    type: 0,
+    gate: {
+      code: 'CKHN',
+      name: 'Hữu Nghị'
+    },
+    confirmFinish: true,
+    companyGoodsName: 'Công ty Logistics',
+    licencePlateVNTQ: '29E06997',
+    numberOfTrailer: 'MOOC-01',
+    paymentOfTax: {
+      paymentStatus: 2
+    }
+  };
+
+  const canonical = mapper.mapListResponse({
+    message: 'Thành công',
+    data: {
+      listData: [declaration],
+      totalCount: 1,
+      totalPage: 1
+    }
+  });
+  const dataArray = mapper.mapListResponse({
+    message: 'Thành công',
+    data: [declaration],
+    totalCount: '2',
+    totalPage: '1'
+  } as never);
+  const nestedRecords = mapper.mapListResponse({
+    message: 'Thành công',
+    data: {
+      records: [declaration],
+      total: '3',
+      totalPages: '2'
+    }
+  } as never);
+
+  assert.equal(canonical.declarations[0]?.declarationNumber, '2026050300533');
+  assert.equal(dataArray.totalCount, 2);
+  assert.equal(dataArray.declarations[0]?.plateNumber, '29E06997');
+  assert.equal(nestedRecords.totalCount, 3);
+  assert.equal(nestedRecords.totalPage, 2);
+  assert.equal(nestedRecords.declarations[0]?.gateName, 'Hữu Nghị');
+});
+
 test('CuaKhauSoMapper omits event candidates without trusted timestamps', () => {
   const mapper = new CuaKhauSoMapper();
   const candidates = mapper.buildEventCandidates(
