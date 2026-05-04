@@ -19,6 +19,7 @@ import { SupabaseJwtGuard } from './supabase-jwt.guard';
     OrganizationRolesGuard
   ],
   exports: [
+    AuthService,
     SupabaseJwtGuard,
     PermissionsService,
     OrganizationMembershipGuard,
