@@ -202,6 +202,7 @@ model Organization {
   deletedAt            DateTime?
   deletedById          String?              @db.Uuid
   memberships          Membership[]
+  driverProfiles       DriverProfile[]
   vehicles             Vehicle[]
   shipments            Shipment[]           @relation("OwningOrganizationShipments")
   cargoOwnerShipments  Shipment[]           @relation("CargoOwnerShipments")
@@ -261,17 +262,21 @@ model Membership {
 
 model DriverProfile {
   id                 String     @id @default(uuid()) @db.Uuid
-  userId             String     @unique @db.Uuid
+  organizationId     String     @db.Uuid
+  userId             String?    @unique @db.Uuid
+  displayName        String?
   licenseNumber      String?
   phone              String?
   identityVerifiedAt DateTime?
   createdAt          DateTime   @default(now())
   deletedAt          DateTime?
   deletedById        String?    @db.Uuid
-  user               User       @relation(fields: [userId], references: [id])
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  user               User?      @relation(fields: [userId], references: [id])
   vehicles           Vehicle[]
   trips              Trip[]
 
+  @@index([organizationId])
   @@index([phone])
   @@index([licenseNumber])
   @@map("driver_profiles")

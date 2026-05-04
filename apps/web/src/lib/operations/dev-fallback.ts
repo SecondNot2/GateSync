@@ -1,5 +1,8 @@
 import type { TripStatus } from '@gatesync/shared';
 import {
+  adminDrivers,
+  adminMembers,
+  adminVehicles,
   demoOrganization,
   demoTrips,
   operationsMetrics,
@@ -8,6 +11,7 @@ import {
 } from '@/lib/demo-data';
 import type { ListTripsParams } from '@/lib/api/types';
 import type {
+  AdminViewData,
   DashboardViewData,
   OperationsOrganizationContext,
   OperationsTripDetail,
@@ -56,7 +60,32 @@ export function getDevTripDetailData(tripId: string, reason: string): TripDetail
   };
 }
 
-function toDevOrganization(reason: string, activeTripCount?: number): OperationsOrganizationContext {
+export function getDevAdminData(reason: string): AdminViewData {
+  return {
+    organization: toDevOrganization(reason),
+    profile: {
+      id: 'dev-organization',
+      name: demoOrganization.name,
+      type: demoOrganization.type,
+      taxCode: demoOrganization.taxCode,
+      location: demoOrganization.location,
+      email: 'ops@gatesync.local',
+      phone: '+84988123456',
+      currentUserRole: 'OWNER',
+      canManageMembers: false,
+      canManageFleet: false
+    },
+    members: adminMembers,
+    vehicles: adminVehicles,
+    drivers: adminDrivers,
+    notice: `Đang dùng dữ liệu mẫu cục bộ: ${reason}`
+  };
+}
+
+function toDevOrganization(
+  reason: string,
+  activeTripCount?: number
+): OperationsOrganizationContext {
   const organization: OperationsOrganizationContext = {
     name: demoOrganization.name,
     type: demoOrganization.type,
@@ -106,12 +135,14 @@ function toDevTripDetail(trip: (typeof demoTrips)[number]): OperationsTripDetail
       role: 'VIEWER',
       visibilityLevel: 'OPERATIONAL'
     })),
-    events: trip.events.map((event) => toDevTripEvent({
-      ...event,
-      tripId: trip.id,
-      tripCode: trip.tripCode,
-      borderGate: trip.borderGate
-    }))
+    events: trip.events.map((event) =>
+      toDevTripEvent({
+        ...event,
+        tripId: trip.id,
+        tripCode: trip.tripCode,
+        borderGate: trip.borderGate
+      })
+    )
   };
 }
 

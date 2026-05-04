@@ -17,8 +17,11 @@ import type {
 export type ApiMembership = {
   id: string;
   organizationId: string;
+  userId?: string;
   role: MembershipRole;
   status: MembershipStatus;
+  createdAt?: string;
+  user?: ApiUserProfile | null;
 };
 
 export type ApiOrganization = {
@@ -48,14 +51,25 @@ export type ApiVehicle = {
   vehicleType: VehicleType;
   ownershipType?: OwnershipType;
   defaultDriverId?: string | null;
+  defaultDriver?: ApiDriverProfile | null;
+  _count?: {
+    trips?: number;
+  };
 };
 
 export type ApiDriverProfile = {
   id: string;
-  userId: string;
+  organizationId?: string;
+  userId?: string | null;
+  displayName?: string | null;
   licenseNumber?: string | null;
   phone?: string | null;
-  user: ApiUserProfile;
+  user?: ApiUserProfile | null;
+  vehicles?: ApiVehicle[];
+  _count?: {
+    trips?: number;
+    vehicles?: number;
+  };
 };
 
 export type ApiBorderGate = {
@@ -205,4 +219,36 @@ export type CreateTripEventPayload = {
   source?: TripEventSource;
   sourceRef?: string;
   note?: string;
+};
+
+export type CreateVehiclePayload = {
+  plateNumber: string;
+  vehicleType: VehicleType;
+  ownershipType?: OwnershipType;
+  defaultDriverId?: string;
+};
+
+export type UpdateVehiclePayload = Partial<Omit<CreateVehiclePayload, 'defaultDriverId'>> & {
+  defaultDriverId?: string | null;
+};
+
+export type CreateDriverPayload = {
+  displayName?: string;
+  phone?: string;
+  licenseNumber?: string;
+  userId?: string;
+};
+
+export type UpdateDriverPayload = Partial<Omit<CreateDriverPayload, 'userId'>> & {
+  userId?: string | null;
+};
+
+export type InviteMembershipPayload = {
+  email: string;
+  role: MembershipRole;
+};
+
+export type UpdateMembershipPayload = {
+  role?: MembershipRole;
+  status?: MembershipStatus;
 };

@@ -4,9 +4,12 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { DriversModule } from './modules/drivers/drivers.module';
+import { MembershipsModule } from './modules/memberships/memberships.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { TripsModule } from './modules/trips/trips.module';
+import { VehiclesModule } from './modules/vehicles/vehicles.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
 
@@ -18,8 +21,11 @@ import { ApiResponseInterceptor } from './common/interceptors/api-response.inter
     PrismaModule,
     AuthModule,
     DashboardModule,
+    DriversModule,
+    MembershipsModule,
     OrganizationsModule,
-    TripsModule
+    TripsModule,
+    VehiclesModule
   ],
   controllers: [AppController],
   providers: [

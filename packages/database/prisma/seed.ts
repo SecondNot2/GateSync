@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 const demoOrganizationId = '00000000-0000-4000-8000-000000000001';
 const demoUserId = '00000000-0000-4000-8000-000000000002';
+const demoDriverId = '00000000-0000-4000-8000-000000000011';
 
 async function main() {
   await prisma.user.upsert({
@@ -58,6 +59,50 @@ async function main() {
       userId: demoUserId,
       role: 'OWNER',
       status: 'ACTIVE'
+    }
+  });
+
+  await prisma.driverProfile.upsert({
+    where: {
+      id: demoDriverId
+    },
+    update: {
+      organizationId: demoOrganizationId,
+      displayName: 'Nguyễn Văn Bình',
+      phone: '0988123456',
+      licenseNumber: '790123456789',
+      deletedAt: null,
+      deletedById: null
+    },
+    create: {
+      id: demoDriverId,
+      organizationId: demoOrganizationId,
+      displayName: 'Nguyễn Văn Bình',
+      phone: '0988123456',
+      licenseNumber: '790123456789'
+    }
+  });
+
+  await prisma.vehicle.upsert({
+    where: {
+      organizationId_plateNumber: {
+        organizationId: demoOrganizationId,
+        plateNumber: '29H12345'
+      }
+    },
+    update: {
+      vehicleType: 'CONTAINER_TRUCK',
+      ownershipType: 'OWNED',
+      defaultDriverId: demoDriverId,
+      deletedAt: null,
+      deletedById: null
+    },
+    create: {
+      organizationId: demoOrganizationId,
+      plateNumber: '29H12345',
+      vehicleType: 'CONTAINER_TRUCK',
+      ownershipType: 'OWNED',
+      defaultDriverId: demoDriverId
     }
   });
 

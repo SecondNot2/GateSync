@@ -1,5 +1,8 @@
 import type {
+  MembershipRole,
+  MembershipStatus,
   OrganizationType,
+  OwnershipType,
   TripDirection,
   TripEventSource,
   TripEventStatus,
@@ -12,10 +15,13 @@ import type {
 } from '@gatesync/shared';
 import type {
   ApiDashboardSummary,
+  ApiDriverProfile,
+  ApiMembership,
   ApiOrganization,
   ApiTripDetail,
   ApiTripEvent,
   ApiTripSummary,
+  ApiVehicle,
   ListTripsParams
 } from '@/lib/api/types';
 
@@ -137,6 +143,58 @@ export type TripsViewData = {
 export type TripDetailViewData = {
   organization: OperationsOrganizationContext;
   trip: OperationsTripDetail;
+  notice?: string;
+};
+
+export type AdminOrganizationProfile = {
+  id: string;
+  name: string;
+  type: OrganizationType;
+  taxCode: string;
+  location: string;
+  email: string;
+  phone: string;
+  currentUserRole: MembershipRole;
+  canManageMembers: boolean;
+  canManageFleet: boolean;
+};
+
+export type AdminMember = {
+  id: string;
+  name: string;
+  email: string;
+  role: MembershipRole;
+  status: MembershipStatus;
+  lastActiveAt: string;
+};
+
+export type AdminVehicle = {
+  id: string;
+  plateNumber: string;
+  vehicleType: VehicleType;
+  ownershipType: OwnershipType;
+  defaultDriverId?: string;
+  defaultDriver: string;
+  currentTrip: string;
+  health: string;
+};
+
+export type AdminDriver = {
+  id: string;
+  name: string;
+  phone: string;
+  licenseNumber: string;
+  assignedVehicle: string;
+  activeTrip: string;
+  identityStatus: string;
+};
+
+export type AdminViewData = {
+  organization: OperationsOrganizationContext;
+  profile: AdminOrganizationProfile;
+  members: AdminMember[];
+  vehicles: AdminVehicle[];
+  drivers: AdminDriver[];
   notice?: string;
 };
 
@@ -308,6 +366,37 @@ export function toApiTripDetailView(
   };
 }
 
+export function toApiAdminView(
+  organization: ApiOrganization,
+  memberships: ApiMembership[],
+  vehicles: ApiVehicle[],
+  drivers: ApiDriverProfile[]
+): AdminViewData {
+  const currentUserRole = organization.currentUserMembership.role;
+
+  return {
+    organization: toOrganizationContext(organization),
+    profile: {
+      id: organization.id,
+      name: organization.name,
+      type: organization.type,
+      taxCode: organization.taxCode ?? 'Chưa cập nhật',
+      location: organization.address ?? 'Chưa cập nhật địa bàn',
+      email: organization.email ?? 'Chưa cập nhật',
+      phone: organization.phone ?? 'Chưa cập nhật',
+      currentUserRole,
+      canManageMembers: currentUserRole === 'OWNER' || currentUserRole === 'ADMIN',
+      canManageFleet:
+        currentUserRole === 'OWNER' ||
+        currentUserRole === 'ADMIN' ||
+        currentUserRole === 'DISPATCHER'
+    },
+    members: memberships.map(toAdminMemberView),
+    vehicles: vehicles.map(toAdminVehicleView),
+    drivers: drivers.map(toAdminDriverView)
+  };
+}
+
 export function toOrganizationContext(
   organization: ApiOrganization,
   activeTripCount?: number
@@ -346,9 +435,8 @@ export function toTripSummaryView(trip: ApiTripSummary): OperationsTripSummary {
       type: trip.vehicle?.vehicleType ?? 'OTHER'
     },
     driver: {
-      name:
-        trip.driverProfile?.user.fullName ?? trip.driverProfile?.user.email ?? 'Chưa gán tài xế',
-      phone: trip.driverProfile?.phone ?? trip.driverProfile?.user.phone ?? 'Chưa cập nhật'
+      name: resolveDriverName(trip.driverProfile),
+      phone: trip.driverProfile?.phone ?? trip.driverProfile?.user?.phone ?? 'Chưa cập nhật'
     },
     plannedStartAt: formatApiDateTime(trip.plannedStartAt),
     plannedArrivalAt: formatApiDateTime(trip.plannedArrivalAt),
@@ -398,6 +486,64 @@ export function toTripEventView(event: ApiTripEventWithTrip): OperationsTripEven
   }
 
   return mappedEvent;
+}
+
+function toAdminMemberView(membership: ApiMembership): AdminMember {
+  return {
+    id: membership.id,
+    name: membership.user?.fullName ?? membership.user?.email ?? 'Thành viên chưa đặt tên',
+    email: membership.user?.email ?? 'Chưa cập nhật email',
+    role: membership.role,
+    status: membership.status,
+    lastActiveAt: formatApiDateTime(membership.createdAt)
+  };
+}
+
+function toAdminVehicleView(vehicle: ApiVehicle): AdminVehicle {
+  const tripCount = vehicle._count?.trips ?? 0;
+  const defaultDriverId = vehicle.defaultDriverId ?? vehicle.defaultDriver?.id;
+  const mappedVehicle: AdminVehicle = {
+    id: vehicle.id,
+    plateNumber: vehicle.plateNumber,
+    vehicleType: vehicle.vehicleType,
+    ownershipType: vehicle.ownershipType ?? 'OWNED',
+    defaultDriver: vehicle.defaultDriver ? resolveDriverName(vehicle.defaultDriver) : 'Chưa gán',
+    currentTrip: tripCount > 0 ? `${tripCount} chuyến đã liên kết` : 'Chưa có chuyến',
+    health: tripCount > 0 ? 'Đang theo dõi vận hành' : 'Sẵn sàng phân công'
+  };
+
+  if (defaultDriverId) {
+    mappedVehicle.defaultDriverId = defaultDriverId;
+  }
+
+  return mappedVehicle;
+}
+
+function toAdminDriverView(driver: ApiDriverProfile): AdminDriver {
+  const assignedVehicleCount = driver._count?.vehicles ?? driver.vehicles?.length ?? 0;
+  const activeTripCount = driver._count?.trips ?? 0;
+
+  return {
+    id: driver.id,
+    name: resolveDriverName(driver),
+    phone: driver.phone ?? driver.user?.phone ?? 'Chưa cập nhật',
+    licenseNumber: driver.licenseNumber ?? 'Chưa cập nhật',
+    assignedVehicle:
+      driver.vehicles?.map((vehicle) => vehicle.plateNumber).join(', ') ||
+      (assignedVehicleCount > 0 ? `${assignedVehicleCount} xe mặc định` : 'Chưa gán xe'),
+    activeTrip: activeTripCount > 0 ? `${activeTripCount} chuyến đã liên kết` : 'Chưa có chuyến',
+    identityStatus: driver.userId ? 'Đã liên kết tài khoản' : 'Hồ sơ vận hành nội bộ'
+  };
+}
+
+function resolveDriverName(driver?: ApiDriverProfile | null) {
+  return (
+    driver?.displayName ??
+    driver?.user?.fullName ??
+    driver?.user?.email ??
+    driver?.phone ??
+    'Chưa gán tài xế'
+  );
 }
 
 function calculateDelayMinutes(trip: ApiTripSummary) {

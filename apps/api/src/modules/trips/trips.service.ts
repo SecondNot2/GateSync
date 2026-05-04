@@ -16,7 +16,7 @@ import { TripStateTransitionService } from './trip-state-transition.service';
 type PrismaExecutor = Prisma.TransactionClient | PrismaService;
 type DriverProfileReference = {
   id: string;
-  userId: string;
+  userId: string | null;
 };
 
 const tripSummaryInclude = {
@@ -262,7 +262,7 @@ export class TripsService {
           }
         });
 
-        if (driverProfile) {
+        if (driverProfile?.userId) {
           await tx.tripParticipant.create({
             data: {
               tripId: trip.id,
@@ -460,6 +460,7 @@ export class TripsService {
       const foundDriverProfile = await prisma.driverProfile.findFirst({
         where: {
           id: dto.driverProfileId,
+          organizationId,
           deletedAt: null
         },
         select: {
