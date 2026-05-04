@@ -11,7 +11,12 @@ import {
 } from '@/lib/demo-data';
 import type { ListTripsParams } from '@/lib/api/types';
 import type {
+  ApiCuaKhauSoDeclarationSummary,
+  ListCuaKhauSoDeclarationsParams
+} from '@/lib/api/types';
+import type {
   AdminViewData,
+  CuaKhauSoViewData,
   DashboardViewData,
   OperationsOrganizationContext,
   OperationsTripDetail,
@@ -81,6 +86,69 @@ export function getDevAdminData(reason: string): AdminViewData {
     notice: `Đang dùng dữ liệu mẫu cục bộ: ${reason}`
   };
 }
+
+export function getDevCuaKhauSoData(
+  filters: ListCuaKhauSoDeclarationsParams,
+  reason: string
+): CuaKhauSoViewData {
+  const declarations = devCuaKhauSoDeclarations.filter((declaration) => {
+    if (filters.direction && declaration.direction !== filters.direction) {
+      return false;
+    }
+
+    if (filters.status === 2 && !declaration.completed) {
+      return false;
+    }
+
+    if (filters.status === 1 && declaration.completed) {
+      return false;
+    }
+
+    if (filters.keyword) {
+      const keyword = filters.keyword.toLowerCase();
+      return `${declaration.declarationNumber} ${declaration.plateNumber} ${declaration.trailerNumber}`
+        .toLowerCase()
+        .includes(keyword);
+    }
+
+    return true;
+  });
+
+  return {
+    organization: toDevOrganization(reason, declarations.length),
+    session: {
+      authenticated: false
+    },
+    declarations: {
+      declarations,
+      totalCount: declarations.length,
+      totalPage: declarations.length > 0 ? 1 : 0,
+      message: 'Dữ liệu mẫu Cửa khẩu số chỉ dùng để xem giao diện.'
+    },
+    notice: `Đang dùng dữ liệu mẫu cục bộ: ${reason}`
+  };
+}
+
+const devCuaKhauSoDeclarations: ApiCuaKhauSoDeclarationSummary[] = [
+  {
+    externalId: '84b718cf-4a72-4c7e-91d8-24e51ae53154',
+    declarationNumber: '2026050300533',
+    createdAt: '2026-05-03T13:15:21.972Z',
+    direction: 'IMPORT',
+    declarationType: 'IMPORT',
+    status: 'SUBMITTED',
+    statusLabel: 'Chưa hoàn thành',
+    gateName: 'Hữu Nghị',
+    gateCode: 'CKHN',
+    companyGoodsName: 'CÔNG TY CỔ PHẦN LOGISTICS THÁI VIỆT TRUNG',
+    plateNumber: 'FF0666',
+    trailerNumber: 'Chưa cập nhật',
+    changePlateNumber: 'Không sang tải',
+    totalWeight: 3.25,
+    completed: false,
+    paymentStatus: 'Chưa thanh toán'
+  }
+];
 
 function toDevOrganization(
   reason: string,

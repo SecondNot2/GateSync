@@ -249,6 +249,137 @@ export type ApiDashboardSummary = {
   >;
 };
 
+export type ApiCuaKhauSoDirection = 'IMPORT' | 'EXPORT';
+export type ApiCuaKhauSoStatus = 1 | 2 | 3;
+export type ApiCuaKhauSoPageSize = 10 | 20 | 50 | 100;
+
+export type CuaKhauSoLoginPayload = {
+  username: string;
+  password: string;
+};
+
+export type ApiCuaKhauSoSession = {
+  authenticated: boolean;
+  username?: string;
+  expiresAt?: string;
+};
+
+export type ListCuaKhauSoDeclarationsParams = {
+  pageNumber?: number;
+  pageSize?: ApiCuaKhauSoPageSize;
+  status?: ApiCuaKhauSoStatus;
+  keyword?: string;
+  direction?: ApiCuaKhauSoDirection;
+};
+
+export type ApiCuaKhauSoProcedureStep = {
+  step: number;
+  label: string;
+  done: boolean;
+  occurredAt?: string;
+};
+
+export type ApiCuaKhauSoDeclarationSummary = {
+  externalId: string;
+  declarationNumber: string;
+  createdAt?: string;
+  direction: string;
+  declarationType: string;
+  status: string;
+  statusLabel: string;
+  gateName: string;
+  gateCode?: string;
+  companyGoodsName: string;
+  plateNumber: string;
+  trailerNumber: string;
+  changePlateNumber: string;
+  totalWeight?: number;
+  completed: boolean;
+  paymentStatus: string;
+};
+
+export type ApiCuaKhauSoEventCandidate = {
+  eventType: TripEventType;
+  occurredAt: string;
+  sourceRef: string;
+  idempotencyKey: string;
+  note: string;
+  confidence: number;
+  rawPayload: unknown;
+};
+
+export type ApiCuaKhauSoDeclarationDetail = ApiCuaKhauSoDeclarationSummary & {
+  borderGuardDeclarationNumber: string;
+  arrivalAt: string;
+  feePayingCompany: {
+    name: string;
+    taxCode: string;
+    address: string;
+    phone: string;
+  };
+  parkingPlace: {
+    name: string;
+    address: string;
+    description: string;
+  };
+  infrastructureCharges: number;
+  transferCharges: number;
+  vehicles: Array<{
+    id?: string;
+    plateNumber: string;
+    trailerNumber: string;
+    driverName: string;
+    vehicleType: string;
+    nationality: string;
+    weight?: number;
+  }>;
+  goods: Array<{
+    id?: string;
+    companyName: string;
+    companyTaxCode: string;
+    declarationNumber: string;
+    declarationType: string;
+    items: Array<{
+      id?: string;
+      name: string;
+      hsCode: string;
+      weight?: number;
+      priceVnd?: number;
+    }>;
+  }>;
+  procedureSteps: ApiCuaKhauSoProcedureStep[];
+  eventCandidates: ApiCuaKhauSoEventCandidate[];
+};
+
+export type ApiCuaKhauSoDeclarationList = {
+  declarations: ApiCuaKhauSoDeclarationSummary[];
+  totalCount: number;
+  totalPage: number;
+  message: string;
+};
+
+export type SyncCuaKhauSoDeclarationPayload = {
+  tripId?: string;
+};
+
+export type ApiCuaKhauSoSyncResult = {
+  declaration: ApiCuaKhauSoDeclarationSummary & {
+    id: string;
+  };
+  linkedTripId?: string;
+  linkedBy: 'requested' | 'declaration' | 'tripCode' | 'none';
+  recordedEvents: Array<{
+    id: string;
+    eventType: TripEventType;
+    occurredAt: string;
+  }>;
+  skippedEvents: Array<{
+    eventType: TripEventType;
+    reason: string;
+  }>;
+  lastSyncAt: string;
+};
+
 export type ListTripsParams = {
   search?: string;
   status?: TripStatus;

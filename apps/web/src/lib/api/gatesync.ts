@@ -1,6 +1,10 @@
 import { apiClient } from '@/lib/api/client';
 import type {
   ApiDriverProfile,
+  ApiCuaKhauSoDeclarationDetail,
+  ApiCuaKhauSoDeclarationList,
+  ApiCuaKhauSoSession,
+  ApiCuaKhauSoSyncResult,
   ApiDashboardSummary,
   ApiMembership,
   ApiOrganization,
@@ -9,10 +13,13 @@ import type {
   ApiTripSummary,
   ApiVehicle,
   CreateDriverPayload,
+  CuaKhauSoLoginPayload,
   CreateTripEventPayload,
   CreateVehiclePayload,
   InviteMembershipPayload,
+  ListCuaKhauSoDeclarationsParams,
   ListTripsParams,
+  SyncCuaKhauSoDeclarationPayload,
   UpdateDriverPayload,
   UpdateMembershipPayload,
   UpdateVehiclePayload
@@ -23,6 +30,19 @@ type AuthenticatedOptions = {
 };
 
 function buildQuery(params: ListTripsParams = {}) {
+  const searchParams = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      searchParams.set(key, String(value));
+    }
+  });
+
+  const query = searchParams.toString();
+  return query ? `?${query}` : '';
+}
+
+function buildCuaKhauSoQuery(params: ListCuaKhauSoDeclarationsParams = {}) {
   const searchParams = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
@@ -61,6 +81,67 @@ export const gatesyncApi = {
   ) =>
     apiClient.patch<ApiMembership>(
       `/organizations/${organizationId}/memberships/${membershipId}`,
+      payload,
+      {
+        accessToken
+      }
+    ),
+
+  getCuaKhauSoSession: (organizationId: string, { accessToken }: AuthenticatedOptions) =>
+    apiClient.get<ApiCuaKhauSoSession>(
+      `/organizations/${organizationId}/integrations/cua-khau-so/session`,
+      {
+        accessToken
+      }
+    ),
+
+  connectCuaKhauSo: (
+    organizationId: string,
+    payload: CuaKhauSoLoginPayload,
+    { accessToken }: AuthenticatedOptions
+  ) =>
+    apiClient.post<ApiCuaKhauSoSession>(
+      `/organizations/${organizationId}/integrations/cua-khau-so/session`,
+      payload,
+      {
+        accessToken
+      }
+    ),
+
+  listCuaKhauSoDeclarations: (
+    organizationId: string,
+    params: ListCuaKhauSoDeclarationsParams,
+    { accessToken }: AuthenticatedOptions
+  ) =>
+    apiClient.get<ApiCuaKhauSoDeclarationList>(
+      `/organizations/${organizationId}/integrations/cua-khau-so/declarations${buildCuaKhauSoQuery(
+        params
+      )}`,
+      {
+        accessToken
+      }
+    ),
+
+  getCuaKhauSoDeclaration: (
+    organizationId: string,
+    externalId: string,
+    { accessToken }: AuthenticatedOptions
+  ) =>
+    apiClient.get<ApiCuaKhauSoDeclarationDetail>(
+      `/organizations/${organizationId}/integrations/cua-khau-so/declarations/${externalId}`,
+      {
+        accessToken
+      }
+    ),
+
+  syncCuaKhauSoDeclaration: (
+    organizationId: string,
+    externalId: string,
+    payload: SyncCuaKhauSoDeclarationPayload,
+    { accessToken }: AuthenticatedOptions
+  ) =>
+    apiClient.post<ApiCuaKhauSoSyncResult>(
+      `/organizations/${organizationId}/integrations/cua-khau-so/declarations/${externalId}/sync`,
       payload,
       {
         accessToken

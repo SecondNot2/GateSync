@@ -9,6 +9,7 @@ import { TripsService } from './trips.service';
 @Module({
   imports: [AuthModule, PrismaModule],
   controllers: [TripsController],
-  providers: [TripsService, TripOperationsService, TripStateTransitionService]
+  providers: [TripsService, TripOperationsService, TripStateTransitionService],
+  exports: [TripsService]
 })
 export class TripsModule {}

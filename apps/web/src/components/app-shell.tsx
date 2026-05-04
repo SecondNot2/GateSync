@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import type { OperationsOrganizationContext } from '@/lib/operations/view-model';
 import { organizationTypeLabels } from '@/lib/ui-labels';
 
-type AppNavKey = 'dashboard' | 'trips' | 'admin';
+type AppNavKey = 'dashboard' | 'trips' | 'integrations' | 'admin';
 
 type AppShellProps = {
   activeNav: AppNavKey;
@@ -43,6 +43,7 @@ export function AppShell({
   const navItems: Array<{ key: AppNavKey; label: string; href: string; badge?: string }> = [
     { key: 'dashboard', label: 'Bảng điều phối', href: '/dashboard' },
     tripsNavItem,
+    { key: 'integrations', label: 'Tích hợp dữ liệu', href: '/integrations/cua-khau-so' },
     { key: 'admin', label: 'Quản trị nội bộ', href: '/admin' }
   ];
 
@@ -167,7 +168,7 @@ export function AppShell({
           {children}
         </section>
       </div>
-      <nav className="fixed inset-x-3 bottom-3 z-30 grid grid-cols-3 gap-2 rounded-3xl border border-slate-200 bg-white/95 p-2 shadow-soft backdrop-blur lg:hidden">
+      <nav className="fixed inset-x-3 bottom-3 z-30 grid grid-cols-4 gap-2 rounded-3xl border border-slate-200 bg-white/95 p-2 shadow-soft backdrop-blur lg:hidden">
         {navItems.map((item) => {
           const isActive = item.key === activeNav;
 

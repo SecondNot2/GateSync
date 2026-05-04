@@ -15,6 +15,8 @@ import type {
 } from '@gatesync/shared';
 import type {
   ApiDashboardSummary,
+  ApiCuaKhauSoDeclarationList,
+  ApiCuaKhauSoSession,
   ApiDriverProfile,
   ApiMembership,
   ApiOrganization,
@@ -142,6 +144,13 @@ export type TripsViewData = {
   organization: OperationsOrganizationContext;
   trips: OperationsTripSummary[];
   filters: ListTripsParams;
+  notice?: string;
+};
+
+export type CuaKhauSoViewData = {
+  organization: OperationsOrganizationContext;
+  session: ApiCuaKhauSoSession;
+  declarations: ApiCuaKhauSoDeclarationList;
   notice?: string;
 };
 
@@ -452,7 +461,8 @@ export function toTripSummaryView(trip: ApiTripSummary): OperationsTripSummary {
     delayMinutes,
     statusDurationMinutes: operationalState?.statusDurationMinutes ?? 0,
     priority,
-    nextAction: operationalState?.nextAction.description ?? getNextAction(trip.currentStatus, delayMinutes),
+    nextAction:
+      operationalState?.nextAction.description ?? getNextAction(trip.currentStatus, delayMinutes),
     nextActionLabel: operationalState?.nextAction.label ?? 'Việc cần làm tiếp theo',
     exceptionCodes: operationalState?.exceptionCodes ?? [],
     availableManualActions: operationalState?.availableManualActions ?? [],

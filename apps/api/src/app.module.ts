@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { DriversModule } from './modules/drivers/drivers.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { MembershipsModule } from './modules/memberships/memberships.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
@@ -22,6 +23,7 @@ import { ApiResponseInterceptor } from './common/interceptors/api-response.inter
     AuthModule,
     DashboardModule,
     DriversModule,
+    IntegrationsModule,
     MembershipsModule,
     OrganizationsModule,
     TripsModule,

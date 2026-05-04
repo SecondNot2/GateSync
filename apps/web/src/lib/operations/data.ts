@@ -1,15 +1,19 @@
 import { gatesyncApi } from '@/lib/api/gatesync';
 import type {
   CreateDriverPayload,
+  CuaKhauSoLoginPayload,
   CreateTripEventPayload,
   CreateVehiclePayload,
+  ListCuaKhauSoDeclarationsParams,
   ListTripsParams,
+  SyncCuaKhauSoDeclarationPayload,
   UpdateDriverPayload,
   UpdateVehiclePayload
 } from '@/lib/api/types';
 import { resolveWebApiSession } from '@/lib/api/session';
 import type {
   AdminViewData,
+  CuaKhauSoViewData,
   DashboardViewData,
   TripDetailViewData,
   TripsViewData
@@ -18,7 +22,8 @@ import {
   toApiAdminView,
   toApiDashboardView,
   toApiTripDetailView,
-  toApiTripsView
+  toApiTripsView,
+  toOrganizationContext
 } from '@/lib/operations/view-model';
 
 export async function loadDashboardData(): Promise<DashboardViewData> {
@@ -87,6 +92,68 @@ export async function loadAdminData(): Promise<AdminViewData> {
   ]);
 
   return toApiAdminView(organization, memberships, vehicles, drivers);
+}
+
+export async function loadCuaKhauSoData(
+  filters: ListCuaKhauSoDeclarationsParams
+): Promise<CuaKhauSoViewData> {
+  const session = await resolveWebApiSession();
+
+  if (session.mode === 'dev') {
+    const fallback = await import('@/lib/operations/dev-fallback');
+    return fallback.getDevCuaKhauSoData(filters, session.reason);
+  }
+
+  const organization = await resolveActiveOrganization(session.accessToken);
+  const sourceSession = await gatesyncApi.getCuaKhauSoSession(organization.id, {
+    accessToken: session.accessToken
+  });
+  const declarations = sourceSession.authenticated
+    ? await gatesyncApi.listCuaKhauSoDeclarations(organization.id, filters, {
+        accessToken: session.accessToken
+      })
+    : {
+        declarations: [],
+        totalCount: 0,
+        totalPage: 0,
+        message: 'Vui lòng đăng nhập Cửa khẩu số để xem dữ liệu.'
+      };
+
+  return {
+    organization: toOrganizationContext(organization, declarations.declarations.length),
+    session: sourceSession,
+    declarations
+  };
+}
+
+export async function connectCuaKhauSo(payload: CuaKhauSoLoginPayload) {
+  const session = await resolveWriteSession();
+  const organization = await resolveActiveOrganization(session.accessToken);
+
+  return gatesyncApi.connectCuaKhauSo(organization.id, payload, {
+    accessToken: session.accessToken
+  });
+}
+
+export async function getCuaKhauSoDeclaration(externalId: string) {
+  const session = await resolveWriteSession();
+  const organization = await resolveActiveOrganization(session.accessToken);
+
+  return gatesyncApi.getCuaKhauSoDeclaration(organization.id, externalId, {
+    accessToken: session.accessToken
+  });
+}
+
+export async function syncCuaKhauSoDeclaration(
+  externalId: string,
+  payload: SyncCuaKhauSoDeclarationPayload = {}
+) {
+  const session = await resolveWriteSession();
+  const organization = await resolveActiveOrganization(session.accessToken);
+
+  return gatesyncApi.syncCuaKhauSoDeclaration(organization.id, externalId, payload, {
+    accessToken: session.accessToken
+  });
 }
 
 export async function createManualTripEvent(tripId: string, payload: CreateTripEventPayload) {
