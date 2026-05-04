@@ -245,7 +245,37 @@ async function resolveActiveOrganization(accessToken: string) {
   );
 
   if (!activeOrganization) {
-    throw new Error('Tài khoản của bạn chưa có tổ chức đang hoạt động trong GateSync.');
+    const suspendedOrganization = organizations.find(
+      (organization) => organization.currentUserMembership.status === 'SUSPENDED'
+    );
+    const removedOrganization = organizations.find(
+      (organization) => organization.currentUserMembership.status === 'REMOVED'
+    );
+    const invitedOrganization = organizations.find(
+      (organization) => organization.currentUserMembership.status === 'INVITED'
+    );
+
+    if (suspendedOrganization) {
+      throw new Error(
+        `Quyền truy cập tổ chức ${suspendedOrganization.name} đang bị tạm dừng. Vui lòng liên hệ quản trị viên tổ chức.`
+      );
+    }
+
+    if (removedOrganization) {
+      throw new Error(
+        `Tài khoản của bạn đã bị gỡ khỏi tổ chức ${removedOrganization.name}. Vui lòng liên hệ quản trị viên nếu cần khôi phục quyền truy cập.`
+      );
+    }
+
+    if (invitedOrganization) {
+      throw new Error(
+        `Lời mời vào tổ chức ${invitedOrganization.name} chưa được kích hoạt. Vui lòng kiểm tra email mời hoặc liên hệ quản trị viên.`
+      );
+    }
+
+    throw new Error(
+      'Tài khoản của bạn chưa thuộc tổ chức đang hoạt động nào trong GateSync. Vui lòng liên hệ quản trị viên để được mời vào tổ chức.'
+    );
   }
 
   return activeOrganization;

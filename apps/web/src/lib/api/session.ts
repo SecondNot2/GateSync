@@ -1,5 +1,4 @@
 import { webEnv } from '@/lib/env';
-import { createBrowserSupabaseClient } from '@/lib/supabase/browser';
 
 export type WebApiSession =
   | {
@@ -16,17 +15,26 @@ export async function resolveWebApiSession(): Promise<WebApiSession> {
     return resolveDevFallback('Chưa cấu hình Supabase cho web app.');
   }
 
-  const supabase = createBrowserSupabaseClient();
-  const { data, error } = await supabase.auth.getSession();
+  const response = await fetch('/auth/session', {
+    method: 'GET',
+    credentials: 'include'
+  });
 
-  if (error) {
-    return resolveDevFallback('Không đọc được phiên đăng nhập Supabase.');
+  const data = (await response.json().catch(() => ({}))) as {
+    accessToken?: string;
+    error?: {
+      message?: string;
+    };
+  };
+
+  if (!response.ok) {
+    return resolveDevFallback(data.error?.message ?? 'Không đọc được phiên đăng nhập GateSync.');
   }
 
-  const accessToken = data.session?.access_token;
+  const accessToken = data.accessToken;
 
   if (!accessToken) {
-    return resolveDevFallback('Chưa có phiên đăng nhập Supabase trong trình duyệt.');
+    return resolveDevFallback('Chưa có phiên đăng nhập GateSync.');
   }
 
   return {

@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { SignOutButton } from '@/components/sign-out-button';
 import type { OperationsOrganizationContext } from '@/lib/operations/view-model';
 import { organizationTypeLabels } from '@/lib/ui-labels';
 
@@ -137,6 +138,10 @@ export function AppShell({
               7 cảnh báo mới cần điều phối viên xác nhận.
             </p>
           </div>
+
+          <div className="mt-5">
+            <SignOutButton className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-rose-200 hover:text-rose-600" />
+          </div>
         </aside>
 
         <section className="min-w-0 space-y-5">
@@ -160,6 +165,7 @@ export function AppShell({
                     {currentOrganization.controlScore}
                   </p>
                 </div>
+                <SignOutButton className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-center text-sm font-semibold text-slate-600 shadow-soft transition hover:border-rose-200 hover:text-rose-600" />
                 {action}
               </div>
             </div>
