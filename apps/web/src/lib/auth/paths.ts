@@ -24,7 +24,7 @@ export function sanitizeAuthenticatedRedirectPath(value?: string | null) {
 
   const [pathname] = trimmedValue.split(/[?#]/, 1);
 
-  if (!isProtectedAppPath(pathname)) {
+  if (!pathname || !isProtectedAppPath(pathname)) {
     return defaultAuthenticatedPath;
   }
 

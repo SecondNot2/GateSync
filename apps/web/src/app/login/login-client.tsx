@@ -15,7 +15,7 @@ const reasonMessages: Record<LoginReason, string> = {
 
 type LoginClientProps = {
   nextPath: string;
-  reason?: LoginReason;
+  reason?: LoginReason | undefined;
 };
 
 type LoginResponse = {
