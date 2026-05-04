@@ -1,5 +1,6 @@
 'use client';
 
+import { hasOrganizationPermission, membershipRoles } from '@gatesync/shared';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
@@ -22,7 +23,7 @@ import {
 import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
 import type { CuaKhauSoViewData } from '@/lib/operations/view-model';
 import { formatApiDateTime } from '@/lib/operations/view-model';
-import { tripEventTypeLabels } from '@/lib/ui-labels';
+import { membershipRoleLabels, tripEventTypeLabels } from '@/lib/ui-labels';
 
 const pageSizes: ApiCuaKhauSoPageSize[] = [10, 20, 50, 100];
 const statuses: Array<{ value: ''; label: string } | { value: ApiCuaKhauSoStatus; label: string }> =
@@ -39,6 +40,14 @@ const directions: Array<
   { value: 'IMPORT', label: 'Nhập khẩu' },
   { value: 'EXPORT', label: 'Xuất khẩu' }
 ];
+const cuaKhauSoConnectorRoleLabels = membershipRoles
+  .filter((role) => hasOrganizationPermission(role, 'integrations:cua-khau-so:connect'))
+  .map((role) => membershipRoleLabels[role])
+  .join(', ');
+const cuaKhauSoSyncRoleLabels = membershipRoles
+  .filter((role) => hasOrganizationPermission(role, 'integrations:cua-khau-so:sync'))
+  .map((role) => membershipRoleLabels[role])
+  .join(', ');
 
 export function CuaKhauSoClient() {
   const [data, setData] = useState<CuaKhauSoViewData>();
@@ -59,8 +68,8 @@ export function CuaKhauSoClient() {
   const [pageSize, setPageSize] = useState<ApiCuaKhauSoPageSize>(20);
   const [selectedExternalId, setSelectedExternalId] = useState<string>();
   const currentUser = data?.organization.currentUser;
-  const canConnectIntegration = currentUser?.canConnectCuaKhauSoIntegration ?? true;
-  const canSyncIntegration = currentUser?.canSyncCuaKhauSoIntegration ?? true;
+  const canConnectIntegration = currentUser?.canConnectCuaKhauSoIntegration ?? false;
+  const canSyncIntegration = currentUser?.canSyncCuaKhauSoIntegration ?? false;
   const filters = useMemo<ListCuaKhauSoDeclarationsParams>(() => {
     const nextFilters: ListCuaKhauSoDeclarationsParams = {
       pageNumber: 1,
@@ -242,6 +251,23 @@ export function CuaKhauSoClient() {
                     GateSync chỉ gọi các endpoint đọc danh sách, chi tiết và bước thủ tục. Không có
                     thao tác thêm, sửa hoặc xóa dữ liệu trên hệ thống nguồn.
                   </p>
+                  <div className="mt-4 rounded-3xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-900">
+                    <p>
+                      Bạn đang kết nối nguồn dữ liệu cho tổ chức{' '}
+                      <span className="font-bold">
+                        {data?.organization.name ?? 'đang xác định'}
+                      </span>
+                      .
+                    </p>
+                    <p className="mt-1">
+                      Vai trò hiện tại:{' '}
+                      <span className="font-bold">
+                        {currentUser ? membershipRoleLabels[currentUser.role] : 'đang kiểm tra'}
+                      </span>
+                      . Được phép kết nối: {cuaKhauSoConnectorRoleLabels}. Được phép đồng bộ:{' '}
+                      {cuaKhauSoSyncRoleLabels}.
+                    </p>
+                  </div>
                 </div>
                 <ReadOnlyBadge />
               </div>
@@ -275,16 +301,24 @@ export function CuaKhauSoClient() {
                 </label>
                 <button
                   className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  disabled={isConnecting || !username.trim() || !password || !canConnectIntegration}
+                  disabled={
+                    isLoading ||
+                    isConnecting ||
+                    !username.trim() ||
+                    !password ||
+                    !canConnectIntegration
+                  }
                 >
-                  {canConnectIntegration
-                    ? isConnecting
-                      ? 'Đang kết nối...'
-                      : 'Kết nối chỉ đọc'
-                    : 'Không có quyền kết nối'}
+                  {isLoading
+                    ? 'Đang kiểm tra quyền...'
+                    : canConnectIntegration
+                      ? isConnecting
+                        ? 'Đang kết nối...'
+                        : 'Kết nối chỉ đọc'
+                      : 'Không có quyền kết nối'}
                 </button>
               </form>
-              {!canConnectIntegration ? (
+              {!isLoading && !canConnectIntegration ? (
                 <p className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                   Chỉ các vai trò được phân quyền tích hợp mới có thể tạo phiên đọc Cửa khẩu số. API
                   vẫn kiểm tra quyền trước khi nhận thông tin đăng nhập nguồn.
@@ -302,7 +336,11 @@ export function CuaKhauSoClient() {
               <p className="mt-2 text-sm leading-6 text-slate-700">
                 {data?.session.authenticated
                   ? `Tài khoản: ${data.session.username ?? 'không hiển thị'} · Hết hạn: ${formatApiDateTime(data.session.expiresAt)}`
-                  : 'Đăng nhập để backend giữ phiên nguồn. Browser không nhận token Cửa khẩu số.'}
+                  : 'Đăng nhập để backend giữ phiên nguồn. Browser không nhận token hoặc raw payload nguồn.'}
+              </p>
+              <p className="mt-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm leading-6 text-emerald-800">
+                Credential nguồn chỉ gửi qua API GateSync sau auth + RBAC. Token phiên Cửa khẩu số
+                được giữ ở backend và không được trả về frontend.
               </p>
             </div>
           </section>

@@ -216,7 +216,6 @@ export type ApiTripEvent = {
   createdById?: string | null;
   confidence?: string | number | null;
   note?: string | null;
-  rawPayload?: unknown;
   createdBy?: ApiUserProfile | null;
 };
 
@@ -320,7 +319,6 @@ export type ApiCuaKhauSoEventCandidate = {
   idempotencyKey: string;
   note: string;
   confidence: number;
-  rawPayload: unknown;
 };
 
 export type ApiCuaKhauSoDeclarationDetail = ApiCuaKhauSoDeclarationSummary & {

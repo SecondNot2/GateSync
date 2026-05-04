@@ -309,6 +309,29 @@ test('createEvent applies a valid transition and stores idempotency key', async 
   });
 });
 
+test('listEvents does not expose raw payload data', async () => {
+  let eventFindManyArgs: { select?: Record<string, unknown> } | undefined;
+  const prisma = {
+    trip: {
+      findFirst: async () => ({
+        id: 'trip-1'
+      })
+    },
+    tripEvent: {
+      findMany: async (args: { select?: Record<string, unknown> }) => {
+        eventFindManyArgs = args;
+        return [];
+      }
+    }
+  };
+  const service = createService(prisma);
+
+  await service.listEvents('org-1', 'trip-1');
+
+  assert.equal(eventFindManyArgs?.select?.id, true);
+  assert.equal(eventFindManyArgs?.select?.rawPayload, undefined);
+});
+
 test('createEvent returns the existing event for duplicate idempotency key in the same trip', async () => {
   let transactionCalled = false;
   const existingEvent = {

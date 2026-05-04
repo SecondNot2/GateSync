@@ -153,9 +153,18 @@ export function LoginClient({ nextPath, reason }: LoginClientProps) {
             </button>
           </form>
 
-          <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-            Tài khoản Cửa khẩu số chỉ được kết nối sau khi bạn đã đăng nhập GateSync và có quyền
-            trong tổ chức.
+          <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
+            <p className="font-bold">Muốn kết nối Cửa khẩu số?</p>
+            <p className="mt-1">
+              Đăng nhập GateSync trước, sau đó mở trang Tích hợp dữ liệu để nhập credential nguồn
+              theo quyền của tổ chức.
+            </p>
+            <Link
+              href="/login?next=%2Fintegrations%2Fcua-khau-so"
+              className="mt-3 inline-flex rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-amber-900 ring-1 ring-amber-200 transition hover:text-sky-700"
+            >
+              Đăng nhập GateSync để kết nối Cửa khẩu số
+            </Link>
           </div>
         </div>
 

@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { DeclarationStatus, DeclarationType, TripDirection, TripEventType } from '@prisma/client';
+import type {
+  DeclarationStatus,
+  DeclarationType,
+  TripDirection,
+  TripEventType
+} from '@prisma/client';
 import type {
   CuaKhauSoDeclarationDetail,
   CuaKhauSoDeclarationDetailView,
@@ -7,6 +12,7 @@ import type {
   CuaKhauSoDeclarationLite,
   CuaKhauSoDeclarationSummary,
   CuaKhauSoEventCandidate,
+  CuaKhauSoEventCandidateView,
   CuaKhauSoGoodsGroup,
   CuaKhauSoMappedList,
   CuaKhauSoPaymentInfo,
@@ -48,8 +54,16 @@ export class CuaKhauSoMapper {
       statusLabel: this.mapStatusLabel(declaration),
       gateName: this.nonEmpty(declaration.gate?.name, 'Chưa xác định'),
       companyGoodsName: this.nonEmpty(declaration.companyGoodsName, 'Chưa cập nhật'),
-      plateNumber: this.nonEmpty(declaration.licencePlateVNTQ, firstVehicle?.licencePlate, 'Chưa cập nhật'),
-      trailerNumber: this.nonEmpty(declaration.numberOfTrailer, firstVehicle?.numberOfMooc, 'Chưa cập nhật'),
+      plateNumber: this.nonEmpty(
+        declaration.licencePlateVNTQ,
+        firstVehicle?.licencePlate,
+        'Chưa cập nhật'
+      ),
+      trailerNumber: this.nonEmpty(
+        declaration.numberOfTrailer,
+        firstVehicle?.numberOfMooc,
+        'Chưa cập nhật'
+      ),
       changePlateNumber: this.nonEmpty(declaration.licencePlateChange, 'Không sang tải'),
       completed: Boolean(declaration.confirmFinish),
       paymentStatus: this.mapPaymentStatus(declaration.paymentOfTax)
@@ -73,7 +87,10 @@ export class CuaKhauSoMapper {
     return summary;
   }
 
-  mapDetail(detail: CuaKhauSoDeclarationDetail, organizationId: string): CuaKhauSoDeclarationDetailView {
+  mapDetail(
+    detail: CuaKhauSoDeclarationDetail,
+    organizationId: string
+  ): CuaKhauSoDeclarationDetailView {
     const summary = this.mapSummary(detail);
     const arrivalAt = this.resolveArrivalAt(detail);
 
@@ -86,8 +103,16 @@ export class CuaKhauSoMapper {
       arrivalAt: arrivalAt ?? 'Chưa cập nhật',
       feePayingCompany: {
         name: this.nonEmpty(detail.feePayingCompanyName, detail.company?.name, 'Chưa cập nhật'),
-        taxCode: this.nonEmpty(detail.feePayingCompanyTaxCode, detail.company?.taxCode, 'Chưa cập nhật'),
-        address: this.nonEmpty(detail.feePayingCompanyAddress, detail.company?.address, 'Chưa cập nhật'),
+        taxCode: this.nonEmpty(
+          detail.feePayingCompanyTaxCode,
+          detail.company?.taxCode,
+          'Chưa cập nhật'
+        ),
+        address: this.nonEmpty(
+          detail.feePayingCompanyAddress,
+          detail.company?.address,
+          'Chưa cập nhật'
+        ),
         phone: this.nonEmpty(detail.feePayingCompanyPhone, detail.company?.phone, 'Chưa cập nhật')
       },
       parkingPlace: {
@@ -97,10 +122,14 @@ export class CuaKhauSoMapper {
       },
       infrastructureCharges: detail.infrastructureCharges ?? 0,
       transferCharges: detail.transferCharges ?? 0,
-      vehicles: (detail.registrationTransportDetails ?? []).map((vehicle) => this.mapVehicle(vehicle)),
+      vehicles: (detail.registrationTransportDetails ?? []).map((vehicle) =>
+        this.mapVehicle(vehicle)
+      ),
       goods: (detail.registrationTransportGoods ?? []).map((group) => this.mapGoodsGroup(group)),
       procedureSteps: this.deriveProcedureSteps(detail),
-      eventCandidates: this.buildEventCandidates(detail, organizationId)
+      eventCandidates: this.buildEventCandidates(detail, organizationId).map((candidate) =>
+        this.toEventCandidateView(candidate)
+      )
     };
   }
 
@@ -185,8 +214,15 @@ export class CuaKhauSoMapper {
       vehicle?.confirmInParkingCustomsTime,
       vehicle?.checkCustomsTime,
       this.resolvePaymentTime(detail.paymentOfTax),
-      this.firstNonEmpty(vehicle?.confirmOutParkingBorderGuardTime, vehicle?.confirmOutParkingCustomsTime),
-      this.firstNonEmpty(detail.confirmFinishTime, vehicle?.confirmOutVNTime, vehicle?.confirmOutTQTime)
+      this.firstNonEmpty(
+        vehicle?.confirmOutParkingBorderGuardTime,
+        vehicle?.confirmOutParkingCustomsTime
+      ),
+      this.firstNonEmpty(
+        detail.confirmFinishTime,
+        vehicle?.confirmOutVNTime,
+        vehicle?.confirmOutTQTime
+      )
     ];
 
     return steps.map((step, index) => {
@@ -279,7 +315,10 @@ export class CuaKhauSoMapper {
         organizationId,
         detail,
         'YARD_EXIT_CONFIRMED',
-        this.firstNonEmpty(vehicle.confirmOutParkingBorderGuardTime, vehicle.confirmOutParkingCustomsTime),
+        this.firstNonEmpty(
+          vehicle.confirmOutParkingBorderGuardTime,
+          vehicle.confirmOutParkingCustomsTime
+        ),
         'Cửa khẩu số xác nhận xe đã rời bãi tập kết.',
         0.85,
         'yard-exit'
@@ -292,14 +331,20 @@ export class CuaKhauSoMapper {
         organizationId,
         detail,
         'BORDER_GATE_EXIT_CONFIRMED',
-        this.firstNonEmpty(detail.confirmFinishTime, vehicle?.confirmOutVNTime, vehicle?.confirmOutTQTime),
+        this.firstNonEmpty(
+          detail.confirmFinishTime,
+          vehicle?.confirmOutVNTime,
+          vehicle?.confirmOutTQTime
+        ),
         'Cửa khẩu số xác nhận hoàn tất quy trình tại cửa khẩu.',
         0.9,
         'border-gate-exit'
       );
     }
 
-    return candidates.sort((left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt));
+    return candidates.sort(
+      (left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt)
+    );
   }
 
   private addCandidate(
@@ -339,12 +384,27 @@ export class CuaKhauSoMapper {
     });
   }
 
+  private toEventCandidateView(candidate: CuaKhauSoEventCandidate): CuaKhauSoEventCandidateView {
+    return {
+      eventType: candidate.eventType,
+      occurredAt: candidate.occurredAt,
+      sourceRef: candidate.sourceRef,
+      idempotencyKey: candidate.idempotencyKey,
+      note: candidate.note,
+      confidence: candidate.confidence
+    };
+  }
+
   private mapVehicle(vehicle: CuaKhauSoVehicleDetail) {
     const mapped: CuaKhauSoDeclarationDetailView['vehicles'][number] = {
       plateNumber: this.nonEmpty(vehicle.licencePlate, 'Chưa cập nhật'),
       trailerNumber: this.nonEmpty(vehicle.numberOfMooc, 'Chưa cập nhật'),
       driverName: this.nonEmpty(vehicle.driverName, 'Chưa cập nhật'),
-      vehicleType: this.nonEmpty(vehicle.vehicleType?.name, vehicle.vehicleType?.code, 'Chưa cập nhật'),
+      vehicleType: this.nonEmpty(
+        vehicle.vehicleType?.name,
+        vehicle.vehicleType?.code,
+        'Chưa cập nhật'
+      ),
       nationality: this.nonEmpty(vehicle.vehicleNationalityType, 'Chưa cập nhật')
     };
 
@@ -434,7 +494,9 @@ export class CuaKhauSoMapper {
     return 'OTHER';
   }
 
-  private mapDeclarationStatus(declaration: Pick<CuaKhauSoDeclarationLite, 'confirmFinish'>): DeclarationStatus {
+  private mapDeclarationStatus(
+    declaration: Pick<CuaKhauSoDeclarationLite, 'confirmFinish'>
+  ): DeclarationStatus {
     if (declaration.confirmFinish) {
       return 'APPROVED';
     }

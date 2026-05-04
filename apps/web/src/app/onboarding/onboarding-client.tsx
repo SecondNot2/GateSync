@@ -1,6 +1,10 @@
 'use client';
 
-import type { OrganizationType } from '@gatesync/shared';
+import {
+  hasOrganizationPermission,
+  membershipRoles,
+  type OrganizationType
+} from '@gatesync/shared';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -25,6 +29,16 @@ type OrganizationFormState = {
   phone: string;
   email: string;
   address: string;
+};
+
+type OnboardingChecklistItem = {
+  key: string;
+  title: string;
+  description: string;
+  statusLabel: string;
+  tone: 'complete' | 'next' | 'locked';
+  actionLabel: string;
+  href?: string | undefined;
 };
 
 const emptyOrganizationForm: OrganizationFormState = {
@@ -61,6 +75,11 @@ const profileOptions: Array<{
     badge: 'Liên kết có kiểm soát'
   }
 ];
+
+const cuaKhauSoConnectorRoleLabels = membershipRoles
+  .filter((role) => hasOrganizationPermission(role, 'integrations:cua-khau-so:connect'))
+  .map((role) => membershipRoleLabels[role])
+  .join(', ');
 
 export function OnboardingClient() {
   const router = useRouter();
@@ -150,8 +169,15 @@ export function OnboardingClient() {
     setIsCreating(true);
 
     try {
-      await gatesyncApi.createOrganization(payload, { accessToken });
-      router.replace('/dashboard');
+      const createdOrganization = await gatesyncApi.createOrganization(payload, { accessToken });
+      setOrganizations((currentOrganizations) => [
+        createdOrganization,
+        ...currentOrganizations.filter((organization) => organization.id !== createdOrganization.id)
+      ]);
+      setForm(emptyOrganizationForm);
+      setMessage(
+        `Đã tạo tổ chức ${createdOrganization.name}. Hãy hoàn tất checklist onboarding trước khi mở rộng vận hành.`
+      );
       router.refresh();
     } catch (createError) {
       setError(
@@ -208,7 +234,7 @@ export function OnboardingClient() {
       <section className="grid gap-6 py-6 lg:grid-cols-[0.9fr_1.1fr] lg:py-8">
         <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-5 shadow-soft sm:p-6">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-            Phase 2 onboarding
+            Onboarding doanh nghiệp
           </p>
           <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-5xl">
             Chọn đường vào phù hợp trước khi mở dữ liệu vận hành.
@@ -296,18 +322,18 @@ function ReadyState({ organizations }: { organizations: ApiOrganization[] }) {
   return (
     <section className="rounded-[1.75rem] border border-emerald-100 bg-emerald-50 p-5 shadow-soft sm:p-6">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-        Sẵn sàng vận hành
+        Checklist sau khi tạo tổ chức
       </p>
-      <h2 className="mt-3 text-2xl font-bold text-slate-950">Bạn đã có tổ chức hoạt động</h2>
-      <div className="mt-5 grid gap-3">
+      <h2 className="mt-3 text-2xl font-bold text-slate-950">
+        Hoàn tất thiết lập trước khi mở rộng vận hành
+      </h2>
+      <p className="mt-2 text-sm leading-6 text-emerald-900">
+        GateSync dùng tài khoản GateSync làm danh tính chính. Credential Cửa khẩu số chỉ được nhập ở
+        trang tích hợp sau khi người dùng đã đăng nhập và có quyền trong tổ chức.
+      </p>
+      <div className="mt-5 grid gap-4">
         {organizations.map((organization) => (
-          <div key={organization.id} className="rounded-3xl border border-emerald-100 bg-white p-4">
-            <p className="font-semibold text-slate-950">{organization.name}</p>
-            <p className="mt-1 text-sm text-slate-600">
-              {organizationTypeLabels[organization.type]} · Vai trò{' '}
-              {membershipRoleLabels[organization.currentUserMembership.role]}
-            </p>
-          </div>
+          <OrganizationChecklistCard key={organization.id} organization={organization} />
         ))}
       </div>
       <Link
@@ -318,6 +344,135 @@ function ReadyState({ organizations }: { organizations: ApiOrganization[] }) {
       </Link>
     </section>
   );
+}
+
+function OrganizationChecklistCard({ organization }: { organization: ApiOrganization }) {
+  const items = buildOnboardingChecklist(organization);
+
+  return (
+    <article className="rounded-3xl border border-emerald-100 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="font-semibold text-slate-950">{organization.name}</p>
+          <p className="mt-1 text-sm text-slate-600">
+            {organizationTypeLabels[organization.type]} · Vai trò{' '}
+            {membershipRoleLabels[organization.currentUserMembership.role]}
+          </p>
+        </div>
+        <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+          Tổ chức active
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        {items.map((item) => (
+          <ChecklistItemCard key={item.key} item={item} />
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function ChecklistItemCard({ item }: { item: OnboardingChecklistItem }) {
+  const toneClass = {
+    complete: 'border-emerald-100 bg-emerald-50 text-emerald-700',
+    next: 'border-sky-100 bg-sky-50 text-sky-700',
+    locked: 'border-slate-200 bg-slate-50 text-slate-500'
+  }[item.tone];
+
+  return (
+    <div className="rounded-3xl border border-slate-100 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-950">{item.title}</h3>
+            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${toneClass}`}>
+              {item.statusLabel}
+            </span>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+        </div>
+        {item.href ? (
+          <Link
+            href={item.href}
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
+          >
+            {item.actionLabel}
+          </Link>
+        ) : (
+          <span className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-500">
+            {item.actionLabel}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function buildOnboardingChecklist(organization: ApiOrganization): OnboardingChecklistItem[] {
+  const role = organization.currentUserMembership.role;
+  const hasProfileBasics = Boolean(
+    organization.taxCode?.trim() &&
+    organization.address?.trim() &&
+    (organization.email?.trim() || organization.phone?.trim())
+  );
+  const canUpdateOrganization = hasOrganizationPermission(role, 'organizations:update');
+  const canManageMembers = hasOrganizationPermission(role, 'memberships:manage');
+  const canManageFleet = hasOrganizationPermission(role, 'fleet:manage');
+  const canConnectCuaKhauSo = hasOrganizationPermission(role, 'integrations:cua-khau-so:connect');
+
+  return [
+    {
+      key: 'organization-profile',
+      title: 'Cập nhật hồ sơ tổ chức',
+      description: hasProfileBasics
+        ? 'Tên, loại tổ chức, mã số thuế và thông tin liên hệ cơ bản đã sẵn sàng cho ca vận hành.'
+        : canUpdateOrganization
+          ? 'Bổ sung mã số thuế, địa bàn và thông tin liên hệ để các thành viên nhận diện đúng tổ chức.'
+          : 'Vai trò hiện tại chỉ xem hồ sơ tổ chức. Hãy nhờ OWNER hoặc ADMIN bổ sung thông tin còn thiếu.',
+      statusLabel: hasProfileBasics
+        ? 'Đã có thông tin'
+        : canUpdateOrganization
+          ? 'Nên làm tiếp'
+          : 'Cần quyền',
+      tone: hasProfileBasics ? 'complete' : canUpdateOrganization ? 'next' : 'locked',
+      actionLabel: canUpdateOrganization ? 'Mở quản trị' : 'Cần OWNER/ADMIN',
+      href: canUpdateOrganization ? '/admin' : undefined
+    },
+    {
+      key: 'members',
+      title: 'Mời thành viên',
+      description: canManageMembers
+        ? 'Kiểm tra danh sách đội vận hành và chuẩn bị lời mời theo vai trò trước khi phân chia công việc.'
+        : 'Chỉ OWNER hoặc ADMIN quản lý thành viên để tránh cấp nhầm quyền vào dữ liệu doanh nghiệp.',
+      statusLabel: canManageMembers ? 'Có thể thiết lập' : 'Cần quyền',
+      tone: canManageMembers ? 'next' : 'locked',
+      actionLabel: canManageMembers ? 'Xem thành viên' : 'Cần OWNER/ADMIN',
+      href: canManageMembers ? '/admin' : undefined
+    },
+    {
+      key: 'fleet',
+      title: 'Thêm phương tiện và tài xế',
+      description: canManageFleet
+        ? 'Tạo hồ sơ tài xế và phương tiện để dispatcher có thể gán chuyến, lọc vận hành và xử lý sự kiện nhanh.'
+        : 'Vai trò hiện tại không quản lý đội xe. Dispatcher hoặc quản trị viên có thể thêm phương tiện và tài xế.',
+      statusLabel: canManageFleet ? 'Có thể thiết lập' : 'Cần quyền',
+      tone: canManageFleet ? 'next' : 'locked',
+      actionLabel: canManageFleet ? 'Mở đội xe' : 'Cần quyền đội xe',
+      href: canManageFleet ? '/admin' : undefined
+    },
+    {
+      key: 'cua-khau-so',
+      title: 'Kết nối Cửa khẩu số',
+      description: canConnectCuaKhauSo
+        ? `Nhập tài khoản nguồn được ủy quyền tại trang Tích hợp dữ liệu. Các vai trò được phép: ${cuaKhauSoConnectorRoleLabels}.`
+        : `Credential nguồn chỉ nhập sau auth + RBAC. Các vai trò được phép kết nối: ${cuaKhauSoConnectorRoleLabels}.`,
+      statusLabel: canConnectCuaKhauSo ? 'Sẵn sàng kết nối' : 'Cần quyền tích hợp',
+      tone: canConnectCuaKhauSo ? 'next' : 'locked',
+      actionLabel: canConnectCuaKhauSo ? 'Kết nối nguồn' : 'Không có quyền',
+      href: canConnectCuaKhauSo ? '/integrations/cua-khau-so?from=onboarding' : undefined
+    }
+  ];
 }
 
 function PendingOrganizationsState({ organizations }: { organizations: ApiOrganization[] }) {
@@ -426,7 +581,7 @@ function OrganizationForm({
           disabled={isSubmitting}
           className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-soft transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
         >
-          {isSubmitting ? 'Đang tạo tổ chức...' : 'Tạo tổ chức và vào dashboard'}
+          {isSubmitting ? 'Đang tạo tổ chức...' : 'Tạo tổ chức và xem checklist'}
         </button>
       </form>
     </section>

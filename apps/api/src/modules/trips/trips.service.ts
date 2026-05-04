@@ -26,6 +26,30 @@ const latestTripEventsSelect = {
   recordedAt: true
 } satisfies Prisma.TripEventSelect;
 
+const tripEventPublicSelect = {
+  id: true,
+  tripId: true,
+  organizationId: true,
+  eventType: true,
+  eventStatus: true,
+  source: true,
+  sourceRef: true,
+  idempotencyKey: true,
+  occurredAt: true,
+  recordedAt: true,
+  createdById: true,
+  confidence: true,
+  note: true,
+  createdBy: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true
+    }
+  }
+} satisfies Prisma.TripEventSelect;
+
 const notificationEventTypes = [
   'DEPARTED',
   'ARRIVED_BORDER_AREA',
@@ -412,7 +436,8 @@ export class TripsService {
         {
           recordedAt: 'asc'
         }
-      ]
+      ],
+      select: tripEventPublicSelect
     });
   }
 
@@ -433,7 +458,8 @@ export class TripsService {
       const existingEvent = await this.prisma.tripEvent.findUnique({
         where: {
           idempotencyKey
-        }
+        },
+        select: tripEventPublicSelect
       });
 
       if (existingEvent) {
@@ -457,7 +483,8 @@ export class TripsService {
           idempotencyKey
         );
         const event = await tx.tripEvent.create({
-          data: eventData
+          data: eventData,
+          select: tripEventPublicSelect
         });
 
         if (nextStatus) {
@@ -501,7 +528,8 @@ export class TripsService {
         const existingEvent = await this.prisma.tripEvent.findUnique({
           where: {
             idempotencyKey
-          }
+          },
+          select: tripEventPublicSelect
         });
 
         if (existingEvent?.organizationId === organizationId && existingEvent.tripId === tripId) {

@@ -281,7 +281,7 @@ export type CuaKhauSoDeclarationDetailView = CuaKhauSoDeclarationSummary & {
     }>;
   }>;
   procedureSteps: CuaKhauSoProcedureStep[];
-  eventCandidates: CuaKhauSoEventCandidate[];
+  eventCandidates: CuaKhauSoEventCandidateView[];
 };
 
 export type CuaKhauSoMappedList = {
@@ -300,6 +300,8 @@ export type CuaKhauSoEventCandidate = {
   confidence: number;
   rawPayload: Record<string, unknown>;
 };
+
+export type CuaKhauSoEventCandidateView = Omit<CuaKhauSoEventCandidate, 'rawPayload'>;
 
 export type CuaKhauSoSyncResult = {
   declaration: CuaKhauSoDeclarationSummary & {

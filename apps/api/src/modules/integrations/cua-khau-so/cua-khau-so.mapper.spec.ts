@@ -7,7 +7,13 @@ import type { CuaKhauSoDeclarationDetail } from './cua-khau-so.types';
 
 function loadFixture(): CuaKhauSoDeclarationDetail {
   const raw = JSON.parse(
-    readFileSync(path.resolve(process.cwd(), 'src/modules/integrations/cua-khau-so/__fixtures__/raw-json.json'), 'utf8')
+    readFileSync(
+      path.resolve(
+        process.cwd(),
+        'src/modules/integrations/cua-khau-so/__fixtures__/raw-json.json'
+      ),
+      'utf8'
+    )
   ) as { data: CuaKhauSoDeclarationDetail };
 
   return raw.data;
@@ -25,13 +31,20 @@ test('CuaKhauSoMapper maps real fixture into declaration detail, steps and event
   assert.equal(mapped.procedureSteps.length, 6);
   assert.equal(mapped.procedureSteps[0]?.done, true);
   assert.equal(mapped.procedureSteps[1]?.done, true);
-  assert.equal(mapped.eventCandidates.some((event) => event.eventType === 'DECLARATION_SUBMITTED'), true);
+  assert.equal(
+    mapped.eventCandidates.some((event) => event.eventType === 'DECLARATION_SUBMITTED'),
+    true
+  );
   assert.equal(
     mapped.eventCandidates.some((event) => event.eventType === 'BORDER_GATE_ENTRY_CONFIRMED'),
     true
   );
   assert.equal(
     mapped.eventCandidates.every((event) => event.idempotencyKey.startsWith('cua-khau-so:org-1:')),
+    true
+  );
+  assert.equal(
+    mapped.eventCandidates.every((event) => !('rawPayload' in event)),
     true
   );
 });
