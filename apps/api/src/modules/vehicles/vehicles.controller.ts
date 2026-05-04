@@ -1,20 +1,28 @@
-import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  UseGuards
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { OrganizationMembershipGuard } from '../auth/organization-membership.guard';
-import { OrganizationRoles } from '../auth/organization-roles.decorator';
-import { OrganizationRolesGuard } from '../auth/organization-roles.guard';
+import { OrganizationPermissions } from '../auth/organization-permissions.decorator';
+import { OrganizationPermissionsGuard } from '../auth/organization-permissions.guard';
 import type { RequestUser } from '../auth/request-user';
 import { SupabaseJwtGuard } from '../auth/supabase-jwt.guard';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import { VehiclesService } from './vehicles.service';
 
-const fleetManagerRoles = ['OWNER', 'ADMIN', 'DISPATCHER'] as const;
-
 @ApiTags('vehicles')
 @ApiBearerAuth()
-@UseGuards(SupabaseJwtGuard, OrganizationMembershipGuard)
+@UseGuards(SupabaseJwtGuard, OrganizationMembershipGuard, OrganizationPermissionsGuard)
 @Controller('organizations/:organizationId/vehicles')
 export class VehiclesController {
   constructor(@Inject(VehiclesService) private readonly vehiclesService: VehiclesService) {}
@@ -25,8 +33,7 @@ export class VehiclesController {
   }
 
   @Post()
-  @UseGuards(OrganizationRolesGuard)
-  @OrganizationRoles(...fleetManagerRoles)
+  @OrganizationPermissions('fleet:manage')
   @ApiBody({ type: CreateVehicleDto })
   createVehicle(
     @CurrentUser() user: RequestUser,
@@ -37,8 +44,7 @@ export class VehiclesController {
   }
 
   @Patch(':vehicleId')
-  @UseGuards(OrganizationRolesGuard)
-  @OrganizationRoles(...fleetManagerRoles)
+  @OrganizationPermissions('fleet:manage')
   @ApiBody({ type: UpdateVehicleDto })
   updateVehicle(
     @CurrentUser() user: RequestUser,
@@ -50,8 +56,7 @@ export class VehiclesController {
   }
 
   @Delete(':vehicleId')
-  @UseGuards(OrganizationRolesGuard)
-  @OrganizationRoles(...fleetManagerRoles)
+  @OrganizationPermissions('fleet:manage')
   deleteVehicle(
     @CurrentUser() user: RequestUser,
     @Param('organizationId') organizationId: string,

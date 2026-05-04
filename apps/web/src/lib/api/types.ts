@@ -1,5 +1,6 @@
 import type {
   MembershipRole,
+  MembershipInvitationStatus,
   MembershipStatus,
   OrganizationType,
   OwnershipType,
@@ -23,6 +24,19 @@ export type ApiMembership = {
   status: MembershipStatus;
   createdAt?: string;
   user?: ApiUserProfile | null;
+};
+
+export type ApiMembershipInvitation = {
+  id: string;
+  organizationId: string;
+  email: string;
+  role: MembershipRole;
+  status: MembershipInvitationStatus;
+  expiresAt: string;
+  createdAt?: string;
+  acceptedAt?: string | null;
+  inviteCode?: string;
+  message?: string;
 };
 
 export type ApiOrganization = {
@@ -441,6 +455,10 @@ export type UpdateDriverPayload = Partial<Omit<CreateDriverPayload, 'userId'>> &
 export type InviteMembershipPayload = {
   email: string;
   role: MembershipRole;
+};
+
+export type AcceptMembershipInvitationPayload = {
+  code: string;
 };
 
 export type UpdateMembershipPayload = {

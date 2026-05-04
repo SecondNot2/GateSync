@@ -34,6 +34,13 @@ enum MembershipStatus {
   REMOVED
 }
 
+enum MembershipInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
 enum VehicleType {
   TRUCK
   TRACTOR_HEAD
@@ -202,6 +209,7 @@ model Organization {
   deletedAt            DateTime?
   deletedById          String?              @db.Uuid
   memberships          Membership[]
+  membershipInvitations MembershipInvitation[]
   driverProfiles       DriverProfile[]
   vehicles             Vehicle[]
   shipments            Shipment[]           @relation("OwningOrganizationShipments")
@@ -230,6 +238,9 @@ model User {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   memberships        Membership[]
+  createdMembershipInvitations MembershipInvitation[] @relation("MembershipInvitationCreatedBy")
+  acceptedMembershipInvitations MembershipInvitation[] @relation("MembershipInvitationAcceptedBy")
+  revokedMembershipInvitations  MembershipInvitation[] @relation("MembershipInvitationRevokedBy")
   driverProfile      DriverProfile?
   createdTrips       Trip[]            @relation("TripCreatedBy")
   tripParticipants   TripParticipant[]
@@ -258,6 +269,30 @@ model Membership {
   @@index([userId, organizationId])
   @@index([organizationId, role, status])
   @@map("memberships")
+}
+
+model MembershipInvitation {
+  id              String                     @id @default(uuid()) @db.Uuid
+  organizationId  String                     @db.Uuid
+  email           String
+  role            MembershipRole
+  codeHash        String                     @unique
+  status          MembershipInvitationStatus @default(PENDING)
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  acceptedById    String?                    @db.Uuid
+  revokedAt       DateTime?
+  revokedById     String?                    @db.Uuid
+  createdById     String?                    @db.Uuid
+  createdAt       DateTime                   @default(now())
+  organization    Organization               @relation(fields: [organizationId], references: [id])
+  acceptedBy      User?                      @relation("MembershipInvitationAcceptedBy", fields: [acceptedById], references: [id])
+  revokedBy       User?                      @relation("MembershipInvitationRevokedBy", fields: [revokedById], references: [id])
+  createdBy       User?                      @relation("MembershipInvitationCreatedBy", fields: [createdById], references: [id])
+
+  @@index([organizationId, status, expiresAt])
+  @@index([email, status])
+  @@map("membership_invitations")
 }
 
 model DriverProfile {

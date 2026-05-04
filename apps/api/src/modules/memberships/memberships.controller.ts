@@ -2,22 +2,23 @@ import { Body, Controller, Get, Inject, Param, Patch, Post, UseGuards } from '@n
 import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { OrganizationMembershipGuard } from '../auth/organization-membership.guard';
-import { OrganizationRoles } from '../auth/organization-roles.decorator';
-import { OrganizationRolesGuard } from '../auth/organization-roles.guard';
+import { OrganizationPermissions } from '../auth/organization-permissions.decorator';
+import { OrganizationPermissionsGuard } from '../auth/organization-permissions.guard';
 import type { RequestUser } from '../auth/request-user';
 import { SupabaseJwtGuard } from '../auth/supabase-jwt.guard';
+import { AcceptMembershipInvitationDto } from './dto/accept-membership-invitation.dto';
 import { InviteMembershipDto } from './dto/invite-membership.dto';
 import { UpdateMembershipDto } from './dto/update-membership.dto';
 import { MembershipsService } from './memberships.service';
 
-const membershipManagerRoles = ['OWNER', 'ADMIN'] as const;
-
 @ApiTags('memberships')
 @ApiBearerAuth()
-@UseGuards(SupabaseJwtGuard, OrganizationMembershipGuard)
+@UseGuards(SupabaseJwtGuard, OrganizationMembershipGuard, OrganizationPermissionsGuard)
 @Controller('organizations/:organizationId/memberships')
 export class MembershipsController {
-  constructor(@Inject(MembershipsService) private readonly membershipsService: MembershipsService) {}
+  constructor(
+    @Inject(MembershipsService) private readonly membershipsService: MembershipsService
+  ) {}
 
   @Get()
   listMemberships(@Param('organizationId') organizationId: string) {
@@ -25,20 +26,18 @@ export class MembershipsController {
   }
 
   @Post('invitations')
-  @UseGuards(OrganizationRolesGuard)
-  @OrganizationRoles(...membershipManagerRoles)
+  @OrganizationPermissions('memberships:manage')
   @ApiBody({ type: InviteMembershipDto })
-  createInvitePlaceholder(
+  createInvitation(
     @CurrentUser() user: RequestUser,
     @Param('organizationId') organizationId: string,
     @Body() dto: InviteMembershipDto
   ) {
-    return this.membershipsService.createInvitePlaceholder(user, organizationId, dto);
+    return this.membershipsService.createInvitation(user, organizationId, dto);
   }
 
   @Patch(':membershipId')
-  @UseGuards(OrganizationRolesGuard)
-  @OrganizationRoles(...membershipManagerRoles)
+  @OrganizationPermissions('memberships:manage')
   @ApiBody({ type: UpdateMembershipDto })
   updateMembership(
     @CurrentUser() user: RequestUser,
@@ -47,5 +46,21 @@ export class MembershipsController {
     @Body() dto: UpdateMembershipDto
   ) {
     return this.membershipsService.updateMembership(user, organizationId, membershipId, dto);
+  }
+}
+
+@ApiTags('membership-invitations')
+@ApiBearerAuth()
+@UseGuards(SupabaseJwtGuard)
+@Controller('membership-invitations')
+export class MembershipInvitationsController {
+  constructor(
+    @Inject(MembershipsService) private readonly membershipsService: MembershipsService
+  ) {}
+
+  @Post('accept')
+  @ApiBody({ type: AcceptMembershipInvitationDto })
+  acceptInvitation(@CurrentUser() user: RequestUser, @Body() dto: AcceptMembershipInvitationDto) {
+    return this.membershipsService.acceptInvitation(user, dto);
   }
 }

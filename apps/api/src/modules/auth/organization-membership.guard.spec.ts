@@ -61,3 +61,28 @@ test('blocks cross-tenant organization access', () => {
 
   assert.throws(() => guard.canActivate(createContext(request)), ForbiddenException);
 });
+
+test('blocks suspended and removed organization memberships', () => {
+  for (const status of ['SUSPENDED', 'REMOVED'] as const) {
+    const request: Partial<AuthenticatedRequest> = {
+      params: {
+        organizationId: 'organization-1'
+      },
+      user: {
+        id: 'user-1',
+        supabaseUserId: 'supabase-user-1',
+        claims: {},
+        memberships: [
+          {
+            id: `membership-${status}`,
+            organizationId: 'organization-1',
+            role: 'OWNER',
+            status
+          }
+        ]
+      }
+    };
+
+    assert.throws(() => guard.canActivate(createContext(request)), ForbiddenException);
+  }
+});

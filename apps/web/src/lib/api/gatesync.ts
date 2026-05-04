@@ -8,11 +8,13 @@ import type {
   ApiCuaKhauSoSyncResult,
   ApiDashboardSummary,
   ApiMembership,
+  ApiMembershipInvitation,
   ApiOrganization,
   ApiTripDetail,
   ApiTripEvent,
   ApiTripSummary,
   ApiVehicle,
+  AcceptMembershipInvitationPayload,
   CreateOrganizationPayload,
   CreateDriverPayload,
   CuaKhauSoLoginPayload,
@@ -77,9 +79,16 @@ export const gatesyncApi = {
     payload: InviteMembershipPayload,
     { accessToken }: AuthenticatedOptions
   ) =>
-    apiClient.post<
-      ApiMembership | { email: string; role: string; status: string; message: string }
-    >(`/organizations/${organizationId}/memberships/invitations`, payload, { accessToken }),
+    apiClient.post<ApiMembershipInvitation>(
+      `/organizations/${organizationId}/memberships/invitations`,
+      payload,
+      { accessToken }
+    ),
+
+  acceptMembershipInvitation: (
+    payload: AcceptMembershipInvitationPayload,
+    { accessToken }: AuthenticatedOptions
+  ) => apiClient.post<ApiMembership>('/membership-invitations/accept', payload, { accessToken }),
 
   updateMembership: (
     organizationId: string,

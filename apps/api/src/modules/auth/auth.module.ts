@@ -4,6 +4,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AuthService } from './auth.service';
 import { MeController } from './me.controller';
 import { OrganizationMembershipGuard } from './organization-membership.guard';
+import { OrganizationPermissionsGuard } from './organization-permissions.guard';
 import { OrganizationRolesGuard } from './organization-roles.guard';
 import { PermissionsService } from './permissions.service';
 import { SupabaseJwtGuard } from './supabase-jwt.guard';
@@ -16,6 +17,7 @@ import { SupabaseJwtGuard } from './supabase-jwt.guard';
     SupabaseJwtGuard,
     PermissionsService,
     OrganizationMembershipGuard,
+    OrganizationPermissionsGuard,
     OrganizationRolesGuard
   ],
   exports: [
@@ -23,6 +25,7 @@ import { SupabaseJwtGuard } from './supabase-jwt.guard';
     SupabaseJwtGuard,
     PermissionsService,
     OrganizationMembershipGuard,
+    OrganizationPermissionsGuard,
     OrganizationRolesGuard
   ]
 })

@@ -1,7 +1,15 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException
+} from '@nestjs/common';
+import { createHash, randomBytes } from 'node:crypto';
 import type { MembershipRole, Prisma } from '@prisma/client';
 import type { RequestUser } from '../auth/request-user';
 import { PrismaService } from '../prisma/prisma.service';
+import type { AcceptMembershipInvitationDto } from './dto/accept-membership-invitation.dto';
 import type { InviteMembershipDto } from './dto/invite-membership.dto';
 import type { UpdateMembershipDto } from './dto/update-membership.dto';
 
@@ -16,6 +24,19 @@ const membershipInclude = {
     }
   }
 } satisfies Prisma.MembershipInclude;
+
+const membershipInvitationSelect = {
+  id: true,
+  organizationId: true,
+  email: true,
+  role: true,
+  status: true,
+  expiresAt: true,
+  createdAt: true,
+  acceptedAt: true
+} satisfies Prisma.MembershipInvitationSelect;
+
+const invitationTtlMilliseconds = 14 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class MembershipsService {
@@ -39,27 +60,195 @@ export class MembershipsService {
     });
   }
 
-  async createInvitePlaceholder(user: RequestUser, organizationId: string, dto: InviteMembershipDto) {
-    await this.prisma.auditLog.create({
-      data: {
-        organizationId,
-        actorUserId: user.id,
-        action: 'membership.invite_placeholder',
-        entityType: 'Membership',
-        after: {
-          email: dto.email.trim().toLowerCase(),
-          role: dto.role,
-          status: 'INVITED'
+  async createInvitation(user: RequestUser, organizationId: string, dto: InviteMembershipDto) {
+    const actorMembership = this.getActorMembership(user, organizationId);
+
+    if (actorMembership.role !== 'OWNER' && actorMembership.role !== 'ADMIN') {
+      throw new ForbiddenException('Your role does not allow inviting organization members.');
+    }
+
+    const email = dto.email.trim().toLowerCase();
+    const existingUser = await this.prisma.user.findUnique({
+      where: {
+        email
+      },
+      include: {
+        memberships: {
+          where: {
+            organizationId,
+            deletedAt: null
+          },
+          select: {
+            status: true
+          },
+          take: 1
         }
       }
     });
+    const existingMembership = existingUser?.memberships[0];
+
+    if (existingMembership?.status === 'ACTIVE') {
+      throw new BadRequestException('This user is already an active organization member.');
+    }
+
+    const inviteCode = this.createInvitationCode();
+    const expiresAt = new Date(Date.now() + invitationTtlMilliseconds);
+    const invitation = await this.prisma.$transaction(async (tx) => {
+      const createdInvitation = await tx.membershipInvitation.create({
+        data: {
+          organizationId,
+          email,
+          role: dto.role,
+          codeHash: this.hashInvitationCode(inviteCode),
+          expiresAt,
+          createdById: user.id
+        },
+        select: membershipInvitationSelect
+      });
+
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          actorUserId: user.id,
+          action: 'membership.invitation.create',
+          entityType: 'MembershipInvitation',
+          entityId: createdInvitation.id,
+          after: {
+            email,
+            role: dto.role,
+            status: createdInvitation.status,
+            expiresAt: createdInvitation.expiresAt.toISOString()
+          }
+        }
+      });
+
+      return createdInvitation;
+    });
 
     return {
-      email: dto.email.trim().toLowerCase(),
-      role: dto.role,
-      status: 'INVITED',
-      message: 'Invitation was recorded for audit. Supabase invite delivery will be connected in a later sprint.'
+      ...invitation,
+      inviteCode,
+      message: 'Invitation code was created. Share it only with the invited user.'
     };
+  }
+
+  async acceptInvitation(user: RequestUser, dto: AcceptMembershipInvitationDto) {
+    const codeHash = this.hashInvitationCode(dto.code);
+    const invitation = await this.prisma.membershipInvitation.findUnique({
+      where: {
+        codeHash
+      },
+      select: {
+        ...membershipInvitationSelect,
+        codeHash: true
+      }
+    });
+
+    if (!invitation) {
+      throw new NotFoundException('Membership invitation was not found.');
+    }
+
+    if (invitation.status !== 'PENDING') {
+      throw new BadRequestException('Membership invitation is no longer active.');
+    }
+
+    const now = new Date();
+
+    if (invitation.expiresAt <= now) {
+      await this.prisma.membershipInvitation.update({
+        where: {
+          id: invitation.id
+        },
+        data: {
+          status: 'EXPIRED'
+        }
+      });
+
+      throw new BadRequestException('Membership invitation has expired.');
+    }
+
+    const userEmail = user.email?.trim().toLowerCase();
+
+    if (!userEmail || userEmail !== invitation.email) {
+      throw new ForbiddenException('This invitation is assigned to a different GateSync account.');
+    }
+
+    const membership = await this.prisma.$transaction(async (tx) => {
+      const existingMembership = await tx.membership.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId: invitation.organizationId,
+            userId: user.id
+          }
+        },
+        include: membershipInclude
+      });
+      const activeMembership =
+        existingMembership?.status === 'ACTIVE' && existingMembership.deletedAt === null
+          ? existingMembership
+          : undefined;
+      const acceptedMembership =
+        activeMembership ??
+        (existingMembership
+          ? await tx.membership.update({
+              where: {
+                id: existingMembership.id
+              },
+              data: {
+                role: invitation.role,
+                status: 'ACTIVE',
+                deletedAt: null,
+                deletedById: null
+              },
+              include: membershipInclude
+            })
+          : await tx.membership.create({
+              data: {
+                organizationId: invitation.organizationId,
+                userId: user.id,
+                role: invitation.role,
+                status: 'ACTIVE'
+              },
+              include: membershipInclude
+            }));
+
+      const invitationUpdate = await tx.membershipInvitation.updateMany({
+        where: {
+          id: invitation.id,
+          status: 'PENDING'
+        },
+        data: {
+          status: 'ACCEPTED',
+          acceptedAt: now,
+          acceptedById: user.id
+        }
+      });
+
+      if (invitationUpdate.count !== 1) {
+        throw new BadRequestException('Membership invitation is no longer active.');
+      }
+
+      await tx.auditLog.create({
+        data: {
+          organizationId: invitation.organizationId,
+          actorUserId: user.id,
+          action: 'membership.invitation.accept',
+          entityType: 'MembershipInvitation',
+          entityId: invitation.id,
+          after: {
+            email: invitation.email,
+            role: acceptedMembership.role,
+            status: 'ACCEPTED',
+            membershipId: acceptedMembership.id,
+            userId: user.id
+          }
+        }
+      });
+
+      return acceptedMembership;
+    });
+
+    return membership;
   }
 
   async updateMembership(
@@ -167,7 +356,10 @@ export class MembershipsService {
     }
   }
 
-  private async assertAnotherActiveOwnerExists(organizationId: string, excludedMembershipId: string) {
+  private async assertAnotherActiveOwnerExists(
+    organizationId: string,
+    excludedMembershipId: string
+  ) {
     const ownerCount = await this.prisma.membership.count({
       where: {
         organizationId,
@@ -183,5 +375,33 @@ export class MembershipsService {
     if (ownerCount === 0) {
       throw new BadRequestException('Organization must keep at least one active owner.');
     }
+  }
+
+  private createInvitationCode() {
+    const value = randomBytes(6).toString('hex').toUpperCase();
+
+    return `GS-${value.slice(0, 4)}-${value.slice(4, 8)}-${value.slice(8, 12)}`;
+  }
+
+  private hashInvitationCode(code: string) {
+    return createHash('sha256').update(this.normalizeInvitationCode(code)).digest('hex');
+  }
+
+  private normalizeInvitationCode(value: string) {
+    const trimmedValue = value.trim();
+    let code = trimmedValue;
+
+    try {
+      const url = new URL(trimmedValue);
+      code =
+        url.searchParams.get('inviteCode') ??
+        url.searchParams.get('code') ??
+        url.pathname.split('/').filter(Boolean).at(-1) ??
+        trimmedValue;
+    } catch {
+      code = trimmedValue;
+    }
+
+    return code.toUpperCase().replace(/[^A-Z0-9]/g, '');
   }
 }

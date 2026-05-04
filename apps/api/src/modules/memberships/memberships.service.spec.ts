@@ -58,6 +58,222 @@ test('listMemberships only reads active records from the organization scope', as
   });
 });
 
+test('createInvitation creates a one-time invite code and audit log', async () => {
+  let createdInvitationData: Record<string, unknown> | undefined;
+  let auditData: Record<string, unknown> | undefined;
+  const tx = {
+    membershipInvitation: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        createdInvitationData = data;
+        return {
+          id: 'invitation-1',
+          organizationId: data.organizationId,
+          email: data.email,
+          role: data.role,
+          status: 'PENDING',
+          expiresAt: data.expiresAt as Date,
+          createdAt: new Date('2026-05-05T00:00:00.000Z'),
+          acceptedAt: null
+        };
+      }
+    },
+    auditLog: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        auditData = data;
+        return data;
+      }
+    }
+  };
+  const prisma = {
+    user: {
+      findUnique: async () => null
+    },
+    $transaction: async (callback: (txClient: typeof tx) => Promise<unknown>) => callback(tx)
+  };
+  const service = createService(prisma);
+
+  const invitation = await service.createInvitation(ownerUser, 'org-1', {
+    email: '  Dispatcher@GateSync.Local ',
+    role: 'DISPATCHER'
+  });
+
+  assert.equal(invitation.email, 'dispatcher@gatesync.local');
+  assert.equal(invitation.status, 'PENDING');
+  assert.match(invitation.inviteCode, /^GS-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/);
+  assert.equal(createdInvitationData?.email, 'dispatcher@gatesync.local');
+  assert.notEqual(createdInvitationData?.codeHash, invitation.inviteCode);
+  assert.equal(auditData?.action, 'membership.invitation.create');
+});
+
+test('createInvitation rejects inviting an active member again', async () => {
+  const prisma = {
+    user: {
+      findUnique: async () => ({
+        memberships: [
+          {
+            status: 'ACTIVE'
+          }
+        ]
+      })
+    }
+  };
+  const service = createService(prisma);
+
+  await assert.rejects(
+    async () =>
+      service.createInvitation(ownerUser, 'org-1', {
+        email: 'active@gatesync.local',
+        role: 'VIEWER'
+      }),
+    BadRequestException
+  );
+});
+
+test('createInvitation rejects active members without membership management rights', async () => {
+  const dispatcherUser: RequestUser = {
+    id: 'dispatcher-user',
+    supabaseUserId: 'dispatcher-supabase-user',
+    claims: {},
+    memberships: [
+      {
+        id: 'dispatcher-membership',
+        organizationId: 'org-1',
+        role: 'DISPATCHER',
+        status: 'ACTIVE'
+      }
+    ]
+  };
+  const service = createService({});
+
+  await assert.rejects(
+    async () =>
+      service.createInvitation(dispatcherUser, 'org-1', {
+        email: 'viewer@gatesync.local',
+        role: 'VIEWER'
+      }),
+    ForbiddenException
+  );
+});
+
+test('acceptInvitation activates the invited user membership and audit log', async () => {
+  let codeHash: unknown;
+  let membershipCreateData: Record<string, unknown> | undefined;
+  let invitationUpdateData: Record<string, unknown> | undefined;
+  let acceptAuditData: Record<string, unknown> | undefined;
+  const invitationRecord = {
+    id: 'invitation-1',
+    organizationId: 'org-1',
+    email: 'invitee@gatesync.local',
+    role: 'DISPATCHER',
+    status: 'PENDING',
+    expiresAt: new Date(Date.now() + 60_000),
+    createdAt: new Date('2026-05-05T00:00:00.000Z'),
+    acceptedAt: null
+  };
+  const tx = {
+    membershipInvitation: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        codeHash = data.codeHash;
+        return invitationRecord;
+      },
+      updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+        invitationUpdateData = data;
+        return {
+          count: 1
+        };
+      }
+    },
+    membership: {
+      findUnique: async () => null,
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        membershipCreateData = data;
+        return {
+          id: 'membership-1',
+          ...data,
+          deletedAt: null
+        };
+      }
+    },
+    auditLog: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        acceptAuditData = data;
+        return data;
+      }
+    }
+  };
+  const prisma = {
+    user: {
+      findUnique: async () => null
+    },
+    membershipInvitation: {
+      findUnique: async ({ where }: { where: { codeHash: string } }) =>
+        where.codeHash === codeHash
+          ? {
+              ...invitationRecord,
+              codeHash
+            }
+          : null
+    },
+    $transaction: async (callback: (txClient: typeof tx) => Promise<unknown>) => callback(tx)
+  };
+  const service = createService(prisma);
+  const invitation = await service.createInvitation(ownerUser, 'org-1', {
+    email: 'invitee@gatesync.local',
+    role: 'DISPATCHER'
+  });
+  const invitedUser: RequestUser = {
+    id: 'invitee-user',
+    supabaseUserId: 'invitee-supabase-user',
+    email: 'invitee@gatesync.local',
+    claims: {},
+    memberships: []
+  };
+
+  const membership = await service.acceptInvitation(invitedUser, {
+    code: invitation.inviteCode
+  });
+
+  assert.equal(membership.role, 'DISPATCHER');
+  assert.equal(membershipCreateData?.organizationId, 'org-1');
+  assert.equal(membershipCreateData?.userId, 'invitee-user');
+  assert.equal(invitationUpdateData?.status, 'ACCEPTED');
+  assert.equal(acceptAuditData?.action, 'membership.invitation.accept');
+});
+
+test('acceptInvitation rejects a code assigned to a different email', async () => {
+  const prisma = {
+    membershipInvitation: {
+      findUnique: async () => ({
+        id: 'invitation-1',
+        organizationId: 'org-1',
+        email: 'other@gatesync.local',
+        role: 'VIEWER',
+        status: 'PENDING',
+        expiresAt: new Date(Date.now() + 60_000),
+        createdAt: new Date('2026-05-05T00:00:00.000Z'),
+        acceptedAt: null,
+        codeHash: 'hash'
+      })
+    }
+  };
+  const service = createService(prisma);
+  const invitedUser: RequestUser = {
+    id: 'invitee-user',
+    supabaseUserId: 'invitee-supabase-user',
+    email: 'invitee@gatesync.local',
+    claims: {},
+    memberships: []
+  };
+
+  await assert.rejects(
+    async () =>
+      service.acceptInvitation(invitedUser, {
+        code: 'GS-1111-2222-3333'
+      }),
+    ForbiddenException
+  );
+});
+
 test('updateMembership rejects cross-tenant membership update', async () => {
   const prisma = {
     membership: {

@@ -12,8 +12,8 @@ import {
 import { ApiBearerAuth, ApiBody, ApiExtraModels, ApiHeader, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { OrganizationMembershipGuard } from '../auth/organization-membership.guard';
-import { OrganizationRoles } from '../auth/organization-roles.decorator';
-import { OrganizationRolesGuard } from '../auth/organization-roles.guard';
+import { OrganizationPermissions } from '../auth/organization-permissions.decorator';
+import { OrganizationPermissionsGuard } from '../auth/organization-permissions.guard';
 import type { RequestUser } from '../auth/request-user';
 import { SupabaseJwtGuard } from '../auth/supabase-jwt.guard';
 import { CreateTripEventDto } from './dto/create-trip-event.dto';
@@ -21,18 +21,11 @@ import { CreateTripDto } from './dto/create-trip.dto';
 import { ListTripsQueryDto } from './dto/list-trips-query.dto';
 import { TripsService } from './trips.service';
 
-const tripManagerRoles = [
-  'OWNER',
-  'ADMIN',
-  'DISPATCHER',
-  'DOCUMENT_STAFF',
-  'FIELD_OPERATOR'
-] as const;
-
 @ApiTags('trips')
 @ApiBearerAuth()
 @ApiExtraModels(ListTripsQueryDto)
-@UseGuards(SupabaseJwtGuard, OrganizationMembershipGuard)
+@UseGuards(SupabaseJwtGuard, OrganizationMembershipGuard, OrganizationPermissionsGuard)
+@OrganizationPermissions('trips:read')
 @Controller('organizations/:organizationId/trips')
 export class TripsController {
   constructor(@Inject(TripsService) private readonly tripsService: TripsService) {}
@@ -43,8 +36,7 @@ export class TripsController {
   }
 
   @Post()
-  @UseGuards(OrganizationRolesGuard)
-  @OrganizationRoles(...tripManagerRoles)
+  @OrganizationPermissions('trips:manage')
   @ApiBody({ type: CreateTripDto })
   createTrip(
     @CurrentUser() user: RequestUser,
@@ -65,8 +57,7 @@ export class TripsController {
   }
 
   @Post(':tripId/events')
-  @UseGuards(OrganizationRolesGuard)
-  @OrganizationRoles(...tripManagerRoles)
+  @OrganizationPermissions('trips:manage')
   @ApiHeader({
     name: 'Idempotency-Key',
     required: false

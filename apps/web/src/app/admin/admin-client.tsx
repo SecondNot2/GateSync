@@ -1,8 +1,10 @@
 'use client';
 
 import {
+  membershipRoles,
   ownershipTypes,
   vehicleTypes,
+  type MembershipRole,
   type OwnershipType,
   type VehicleType
 } from '@gatesync/shared';
@@ -13,6 +15,7 @@ import { NoOrganizationState } from '@/components/no-organization-state';
 import {
   createAdminDriver,
   createAdminVehicle,
+  createMembershipInvitation,
   deleteAdminDriver,
   deleteAdminVehicle,
   loadAdminData,
@@ -47,6 +50,11 @@ type DriverFormState = {
   licenseNumber: string;
 };
 
+type InvitationFormState = {
+  email: string;
+  role: MembershipRole;
+};
+
 const emptyVehicleForm: VehicleFormState = {
   plateNumber: '',
   vehicleType: 'CONTAINER_TRUCK',
@@ -59,6 +67,13 @@ const emptyDriverForm: DriverFormState = {
   phone: '',
   licenseNumber: ''
 };
+
+const emptyInvitationForm: InvitationFormState = {
+  email: '',
+  role: 'DISPATCHER'
+};
+
+const inviteRoles = membershipRoles.filter((role) => role !== 'OWNER');
 
 const roleDescriptions: Record<AdminMember['role'], string> = {
   OWNER: 'Toàn quyền tổ chức, thành viên, đội xe, chuyến và cấu hình thanh toán.',
@@ -79,12 +94,15 @@ export function AdminClient() {
   const [isSaving, setIsSaving] = useState(false);
   const [vehicleForm, setVehicleForm] = useState<VehicleFormState>(emptyVehicleForm);
   const [driverForm, setDriverForm] = useState<DriverFormState>(emptyDriverForm);
+  const [invitationForm, setInvitationForm] = useState<InvitationFormState>(emptyInvitationForm);
   const [editingVehicleId, setEditingVehicleId] = useState<string>();
   const [editingDriverId, setEditingDriverId] = useState<string>();
   const [isVehicleFormOpen, setIsVehicleFormOpen] = useState(false);
   const [isDriverFormOpen, setIsDriverFormOpen] = useState(false);
+  const [isInvitationFormOpen, setIsInvitationFormOpen] = useState(false);
   const shellProps = data?.organization ? { organization: data.organization } : {};
   const canManageFleet = data?.profile.canManageFleet ?? false;
+  const canManageMembers = data?.profile.canManageMembers ?? false;
 
   useEffect(() => {
     let isMounted = true;
@@ -140,6 +158,12 @@ export function AdminClient() {
     setDriverForm(emptyDriverForm);
     setEditingDriverId(undefined);
     setIsDriverFormOpen((value) => !value);
+    setMessage(undefined);
+  }
+
+  function startInviteMember() {
+    setInvitationForm(emptyInvitationForm);
+    setIsInvitationFormOpen((value) => !value);
     setMessage(undefined);
   }
 
@@ -240,6 +264,31 @@ export function AdminClient() {
       setMessage(
         submitError instanceof Error ? submitError.message : 'Không thể lưu hồ sơ tài xế.'
       );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function submitInvitation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+    setMessage(undefined);
+
+    try {
+      const invitation = await createMembershipInvitation({
+        email: invitationForm.email.trim(),
+        role: invitationForm.role
+      });
+
+      setInvitationForm(emptyInvitationForm);
+      setIsInvitationFormOpen(false);
+      setMessage(
+        invitation.inviteCode
+          ? `Đã tạo mã mời ${invitation.inviteCode} cho ${invitation.email}. Hãy gửi mã này cho đúng người được mời.`
+          : `Đã tạo lời mời cho ${invitation.email}.`
+      );
+    } catch (submitError) {
+      setMessage(submitError instanceof Error ? submitError.message : 'Không thể tạo lời mời.');
     } finally {
       setIsSaving(false);
     }
@@ -368,12 +417,27 @@ export function AdminClient() {
                 </p>
                 <h2 className="mt-2 text-2xl font-bold text-slate-950">Phân quyền đội vận hành</h2>
               </div>
-              <span className="rounded-2xl bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-600">
-                {data.profile.canManageMembers
-                  ? 'Có quyền quản lý thành viên'
+              <button
+                type="button"
+                disabled={!canManageMembers}
+                onClick={startInviteMember}
+                className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+              >
+                {canManageMembers
+                  ? isInvitationFormOpen
+                    ? 'Đóng form mời'
+                    : 'Mời thành viên'
                   : 'Chỉ xem thành viên'}
-              </span>
+              </button>
             </div>
+            {isInvitationFormOpen ? (
+              <InvitationForm
+                value={invitationForm}
+                isSaving={isSaving}
+                onChange={setInvitationForm}
+                onSubmit={submitInvitation}
+              />
+            ) : null}
             <div className="mt-5 divide-y divide-slate-100 overflow-hidden rounded-3xl border border-slate-100 bg-white">
               {data.members.map((member) => (
                 <div
@@ -474,6 +538,37 @@ export function AdminClient() {
         </>
       ) : null}
     </AppShell>
+  );
+}
+
+function InvitationForm({
+  value,
+  isSaving,
+  onChange,
+  onSubmit
+}: {
+  value: InvitationFormState;
+  isSaving: boolean;
+  onChange: (value: InvitationFormState) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="mt-5 grid gap-3 rounded-3xl bg-slate-50 p-4">
+      <InputField
+        label="Email người được mời"
+        value={value.email}
+        placeholder="thanhvien@doanhnghiep.vn"
+        required
+        onChange={(email) => onChange({ ...value, email })}
+      />
+      <SelectField
+        label="Vai trò"
+        value={value.role}
+        options={inviteRoles.map((role) => ({ value: role, label: membershipRoleLabels[role] }))}
+        onChange={(role) => onChange({ ...value, role: role as MembershipRole })}
+      />
+      <SubmitButton isSaving={isSaving} label="Tạo mã mời" />
+    </form>
   );
 }
 

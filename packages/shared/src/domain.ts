@@ -21,6 +21,8 @@ export const membershipRoles = [
 
 export const membershipStatuses = ['ACTIVE', 'INVITED', 'SUSPENDED', 'REMOVED'] as const;
 
+export const membershipInvitationStatuses = ['PENDING', 'ACCEPTED', 'REVOKED', 'EXPIRED'] as const;
+
 export const vehicleTypes = [
   'TRUCK',
   'TRACTOR_HEAD',
@@ -150,6 +152,7 @@ export const organizationPermissions = [
 export type OrganizationType = (typeof organizationTypes)[number];
 export type MembershipRole = (typeof membershipRoles)[number];
 export type MembershipStatus = (typeof membershipStatuses)[number];
+export type MembershipInvitationStatus = (typeof membershipInvitationStatuses)[number];
 export type VehicleType = (typeof vehicleTypes)[number];
 export type OwnershipType = (typeof ownershipTypes)[number];
 export type TripType = (typeof tripTypes)[number];

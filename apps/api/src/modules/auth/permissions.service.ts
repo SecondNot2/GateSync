@@ -62,4 +62,21 @@ export class PermissionsService {
   hasAnyRole(membership: RequestMembership | undefined, roles: MembershipRole[]): boolean {
     return this.hasActiveMembership(membership) && roles.includes(membership.role);
   }
+
+  hasPermission(
+    membership: RequestMembership | undefined,
+    permission: OrganizationPermission
+  ): boolean {
+    return this.hasActiveMembership(membership) && this.can(membership.role, permission);
+  }
+
+  hasAllPermissions(
+    membership: RequestMembership | undefined,
+    permissions: OrganizationPermission[]
+  ): boolean {
+    return (
+      this.hasActiveMembership(membership) &&
+      permissions.every((permission) => this.can(membership.role, permission))
+    );
+  }
 }

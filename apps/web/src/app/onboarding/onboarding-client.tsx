@@ -188,19 +188,45 @@ export function OnboardingClient() {
     }
   }
 
-  function submitInviteCode(event: FormEvent<HTMLFormElement>) {
+  async function submitInviteCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(undefined);
     setMessage(undefined);
+
+    if (!accessToken) {
+      setError('Phiên đăng nhập GateSync chưa sẵn sàng. Vui lòng tải lại trang.');
+      return;
+    }
 
     if (!inviteCode.trim()) {
       setError('Vui lòng nhập mã mời hoặc liên kết từ tổ chức vận hành.');
       return;
     }
 
-    setMessage(
-      'GateSync đã ghi nhận mã mời ở bước giao diện. Backend invite thật sẽ xử lý liên kết ở Phase 5; hiện tại tài khoản không thể tự nhận dữ liệu tổ chức.'
-    );
+    setIsCreating(true);
+
+    try {
+      const membership = await gatesyncApi.acceptMembershipInvitation(
+        {
+          code: inviteCode.trim()
+        },
+        {
+          accessToken
+        }
+      );
+      const result = await gatesyncApi.listOrganizations({ accessToken });
+
+      setOrganizations(result);
+      setInviteCode('');
+      setMessage(
+        `Đã kích hoạt lời mời với vai trò ${membershipRoleLabels[membership.role]}. Bạn có thể mở dashboard khi tổ chức ở trạng thái hoạt động.`
+      );
+      router.refresh();
+    } catch (acceptError) {
+      setError(acceptError instanceof Error ? acceptError.message : 'Không thể kích hoạt mã mời.');
+    } finally {
+      setIsCreating(false);
+    }
   }
 
   return (
@@ -306,6 +332,7 @@ export function OnboardingClient() {
                 <InviteOnlyForm
                   profile={selectedProfile}
                   inviteCode={inviteCode}
+                  isSubmitting={isCreating}
                   onInviteCodeChange={setInviteCode}
                   onSubmit={submitInviteCode}
                 />
@@ -591,11 +618,13 @@ function OrganizationForm({
 function InviteOnlyForm({
   profile,
   inviteCode,
+  isSubmitting,
   onInviteCodeChange,
   onSubmit
 }: {
   profile: Exclude<ProfileType, 'business'>;
   inviteCode: string;
+  isSubmitting: boolean;
   onInviteCodeChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -606,8 +635,8 @@ function InviteOnlyForm({
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Invite-only</p>
       <h2 className="mt-3 text-2xl font-bold text-slate-950">{title}</h2>
       <p className="mt-2 text-sm leading-6 text-slate-600">
-        Nhập mã mời hoặc liên kết do tổ chức vận hành gửi. Khi invite backend hoàn tất, mã này sẽ
-        tạo liên kết an toàn với hồ sơ tài xế, chủ hàng hoặc chuyến được chia sẻ.
+        Nhập mã mời hoặc liên kết do tổ chức vận hành gửi. GateSync sẽ kiểm tra email tài khoản hiện
+        tại trước khi kích hoạt quyền vào tổ chức.
       </p>
       <form onSubmit={onSubmit} className="mt-5 grid gap-4">
         <InputField
@@ -616,8 +645,11 @@ function InviteOnlyForm({
           placeholder="GS-INVITE-..."
           onChange={onInviteCodeChange}
         />
-        <button className="min-h-12 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700">
-          Kiểm tra mã mời
+        <button
+          disabled={isSubmitting}
+          className="min-h-12 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+        >
+          {isSubmitting ? 'Đang kích hoạt...' : 'Kích hoạt mã mời'}
         </button>
       </form>
       <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">

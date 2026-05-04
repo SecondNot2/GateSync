@@ -97,6 +97,30 @@ export async function loadAdminData(): Promise<AdminViewData> {
   return toApiAdminView(organization, currentUser, memberships, vehicles, drivers);
 }
 
+export async function createMembershipInvitation(
+  payload: Parameters<typeof gatesyncApi.createMembershipInvitation>[1]
+) {
+  const session = await resolveWriteSession();
+  const { organization } = await resolveActiveOrganization(session.accessToken);
+
+  return gatesyncApi.createMembershipInvitation(organization.id, payload, {
+    accessToken: session.accessToken
+  });
+}
+
+export async function acceptMembershipInvitation(code: string) {
+  const session = await resolveWriteSession();
+
+  return gatesyncApi.acceptMembershipInvitation(
+    {
+      code
+    },
+    {
+      accessToken: session.accessToken
+    }
+  );
+}
+
 export async function loadCuaKhauSoData(
   filters: ListCuaKhauSoDeclarationsParams
 ): Promise<CuaKhauSoViewData> {

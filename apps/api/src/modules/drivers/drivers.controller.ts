@@ -1,20 +1,28 @@
-import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  UseGuards
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { OrganizationMembershipGuard } from '../auth/organization-membership.guard';
-import { OrganizationRoles } from '../auth/organization-roles.decorator';
-import { OrganizationRolesGuard } from '../auth/organization-roles.guard';
+import { OrganizationPermissions } from '../auth/organization-permissions.decorator';
+import { OrganizationPermissionsGuard } from '../auth/organization-permissions.guard';
 import type { RequestUser } from '../auth/request-user';
 import { SupabaseJwtGuard } from '../auth/supabase-jwt.guard';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 import { DriversService } from './drivers.service';
 
-const fleetManagerRoles = ['OWNER', 'ADMIN', 'DISPATCHER'] as const;
-
 @ApiTags('drivers')
 @ApiBearerAuth()
-@UseGuards(SupabaseJwtGuard, OrganizationMembershipGuard)
+@UseGuards(SupabaseJwtGuard, OrganizationMembershipGuard, OrganizationPermissionsGuard)
 @Controller('organizations/:organizationId/drivers')
 export class DriversController {
   constructor(@Inject(DriversService) private readonly driversService: DriversService) {}
@@ -25,8 +33,7 @@ export class DriversController {
   }
 
   @Post()
-  @UseGuards(OrganizationRolesGuard)
-  @OrganizationRoles(...fleetManagerRoles)
+  @OrganizationPermissions('fleet:manage')
   @ApiBody({ type: CreateDriverDto })
   createDriver(
     @CurrentUser() user: RequestUser,
@@ -37,8 +44,7 @@ export class DriversController {
   }
 
   @Patch(':driverProfileId')
-  @UseGuards(OrganizationRolesGuard)
-  @OrganizationRoles(...fleetManagerRoles)
+  @OrganizationPermissions('fleet:manage')
   @ApiBody({ type: UpdateDriverDto })
   updateDriver(
     @CurrentUser() user: RequestUser,
@@ -50,8 +56,7 @@ export class DriversController {
   }
 
   @Delete(':driverProfileId')
-  @UseGuards(OrganizationRolesGuard)
-  @OrganizationRoles(...fleetManagerRoles)
+  @OrganizationPermissions('fleet:manage')
   deleteDriver(
     @CurrentUser() user: RequestUser,
     @Param('organizationId') organizationId: string,
