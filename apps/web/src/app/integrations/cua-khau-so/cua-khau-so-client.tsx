@@ -3,6 +3,7 @@
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { NoOrganizationState } from '@/components/no-organization-state';
 import type {
   ApiCuaKhauSoDeclarationDetail,
   ApiCuaKhauSoDeclarationSummary,
@@ -18,6 +19,7 @@ import {
   loadCuaKhauSoData,
   syncCuaKhauSoDeclaration
 } from '@/lib/operations/data';
+import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
 import type { CuaKhauSoViewData } from '@/lib/operations/view-model';
 import { formatApiDateTime } from '@/lib/operations/view-model';
 import { tripEventTypeLabels } from '@/lib/ui-labels';
@@ -43,6 +45,7 @@ export function CuaKhauSoClient() {
   const [detail, setDetail] = useState<ApiCuaKhauSoDeclarationDetail>();
   const [syncResult, setSyncResult] = useState<ApiCuaKhauSoSyncResult>();
   const [error, setError] = useState<string>();
+  const [organizationIssue, setOrganizationIssue] = useState<OrganizationAccessIssue>();
   const [message, setMessage] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -85,6 +88,7 @@ export function CuaKhauSoClient() {
     async function loadData() {
       setIsLoading(true);
       setError(undefined);
+      setOrganizationIssue(undefined);
 
       try {
         const result = await loadCuaKhauSoData(filters);
@@ -94,6 +98,10 @@ export function CuaKhauSoClient() {
         }
       } catch (loadError) {
         if (isMounted) {
+          if (isOrganizationAccessError(loadError)) {
+            setOrganizationIssue(loadError.issue);
+          }
+
           setError(
             loadError instanceof Error ? loadError.message : 'Không thể tải dữ liệu Cửa khẩu số.'
           );
@@ -202,159 +210,168 @@ export function CuaKhauSoClient() {
     >
       {data?.notice ? <NoticePanel message={data.notice} tone="warning" /> : null}
       {message ? <NoticePanel message={message} tone="info" /> : null}
-      {error ? <NoticePanel message={error} tone="error" /> : null}
+      {error && !organizationIssue ? <NoticePanel message={error} tone="error" /> : null}
+      {!isLoading && organizationIssue && error ? (
+        <NoOrganizationState issue={organizationIssue} message={error} />
+      ) : null}
 
-      <section className="grid gap-5 xl:grid-cols-[1fr_24rem]">
-        <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                Kết nối nguồn
+      {!organizationIssue ? (
+        <>
+          <section className="grid gap-5 xl:grid-cols-[1fr_24rem]">
+            <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                    Kết nối nguồn
+                  </p>
+                  <h2 className="mt-2 text-2xl font-bold text-slate-950">Phiên đọc Cửa khẩu số</h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                    GateSync chỉ gọi các endpoint đọc danh sách, chi tiết và bước thủ tục. Không có
+                    thao tác thêm, sửa hoặc xóa dữ liệu trên hệ thống nguồn.
+                  </p>
+                </div>
+                <ReadOnlyBadge />
+              </div>
+
+              <form
+                onSubmit={submitLogin}
+                className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end"
+              >
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Tài khoản Cửa khẩu số
+                  </span>
+                  <input
+                    className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                    placeholder="Tên đăng nhập được ủy quyền đọc"
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Mật khẩu
+                  </span>
+                  <input
+                    className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                    placeholder="Không lưu ở trình duyệt"
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </label>
+                <button
+                  className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  disabled={isConnecting || !username.trim() || !password}
+                >
+                  {isConnecting ? 'Đang kết nối...' : 'Kết nối chỉ đọc'}
+                </button>
+              </form>
+            </div>
+
+            <div className="rounded-[1.75rem] border border-emerald-100 bg-emerald-50 p-4 shadow-soft sm:p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                Trạng thái an toàn
               </p>
-              <h2 className="mt-2 text-2xl font-bold text-slate-950">Phiên đọc Cửa khẩu số</h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                GateSync chỉ gọi các endpoint đọc danh sách, chi tiết và bước thủ tục. Không có thao
-                tác thêm, sửa hoặc xóa dữ liệu trên hệ thống nguồn.
+              <p className="mt-2 text-2xl font-bold text-slate-950">
+                {data?.session.authenticated ? 'Đã có phiên đọc' : 'Chưa kết nối'}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-slate-700">
+                {data?.session.authenticated
+                  ? `Tài khoản: ${data.session.username ?? 'không hiển thị'} · Hết hạn: ${formatApiDateTime(data.session.expiresAt)}`
+                  : 'Đăng nhập để backend giữ phiên nguồn. Browser không nhận token Cửa khẩu số.'}
               </p>
             </div>
-            <ReadOnlyBadge />
-          </div>
+          </section>
 
-          <form
-            onSubmit={submitLogin}
-            className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end"
-          >
-            <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Tài khoản Cửa khẩu số
-              </span>
-              <input
-                className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                placeholder="Tên đăng nhập được ủy quyền đọc"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Mật khẩu
-              </span>
-              <input
-                className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                placeholder="Không lưu ở trình duyệt"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </label>
-            <button
-              className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-              disabled={isConnecting || !username.trim() || !password}
-            >
-              {isConnecting ? 'Đang kết nối...' : 'Kết nối chỉ đọc'}
-            </button>
-          </form>
-        </div>
+          <section className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                  Tờ khai vận tải
+                </p>
+                <h2 className="mt-2 text-2xl font-bold text-slate-950">
+                  {isLoading
+                    ? 'Đang tải dữ liệu...'
+                    : `${data?.declarations.totalCount ?? 0} tờ khai tìm thấy`}
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  {data?.declarations.message ?? 'Dữ liệu chỉ được đọc từ Cửa khẩu số.'}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-4 xl:w-[42rem]">
+                <input
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100 sm:col-span-2"
+                  placeholder="Tìm biển số, số mooc, số tờ khai"
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                />
+                <select
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                >
+                  {statuses.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                  value={direction}
+                  onChange={(event) => setDirection(event.target.value)}
+                >
+                  {directions.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 sm:col-start-4"
+                  value={pageSize}
+                  onChange={(event) =>
+                    setPageSize(Number(event.target.value) as ApiCuaKhauSoPageSize)
+                  }
+                >
+                  {pageSizes.map((size) => (
+                    <option key={size} value={size}>
+                      {size} dòng
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-        <div className="rounded-[1.75rem] border border-emerald-100 bg-emerald-50 p-4 shadow-soft sm:p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-            Trạng thái an toàn
-          </p>
-          <p className="mt-2 text-2xl font-bold text-slate-950">
-            {data?.session.authenticated ? 'Đã có phiên đọc' : 'Chưa kết nối'}
-          </p>
-          <p className="mt-2 text-sm leading-6 text-slate-700">
-            {data?.session.authenticated
-              ? `Tài khoản: ${data.session.username ?? 'không hiển thị'} · Hết hạn: ${formatApiDateTime(data.session.expiresAt)}`
-              : 'Đăng nhập để backend giữ phiên nguồn. Browser không nhận token Cửa khẩu số.'}
-          </p>
-        </div>
-      </section>
-
-      <section className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-              Tờ khai vận tải
-            </p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-950">
-              {isLoading
-                ? 'Đang tải dữ liệu...'
-                : `${data?.declarations.totalCount ?? 0} tờ khai tìm thấy`}
-            </h2>
-            <p className="mt-2 text-sm text-slate-600">
-              {data?.declarations.message ?? 'Dữ liệu chỉ được đọc từ Cửa khẩu số.'}
-            </p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-4 xl:w-[42rem]">
-            <input
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100 sm:col-span-2"
-              placeholder="Tìm biển số, số mooc, số tờ khai"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-            <select
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}
-            >
-              {statuses.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-              value={direction}
-              onChange={(event) => setDirection(event.target.value)}
-            >
-              {directions.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 sm:col-start-4"
-              value={pageSize}
-              onChange={(event) => setPageSize(Number(event.target.value) as ApiCuaKhauSoPageSize)}
-            >
-              {pageSizes.map((size) => (
-                <option key={size} value={size}>
-                  {size} dòng
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {isLoading ? <StatePanel message="Đang tải tờ khai từ API GateSync..." /> : null}
-        {!isLoading && !data?.session.authenticated ? (
-          <StatePanel message="Hãy kết nối phiên Cửa khẩu số chỉ đọc trước khi tải dữ liệu thật." />
-        ) : null}
-        {!isLoading &&
-        data?.session.authenticated &&
-        data.declarations.declarations.length === 0 ? (
-          <StatePanel message="Không tìm thấy tờ khai phù hợp với bộ lọc hiện tại." />
-        ) : null}
-        {!isLoading && data && data.declarations.declarations.length > 0 ? (
-          <div className="mt-5 grid gap-3 xl:grid-cols-[1fr_26rem]">
-            <DeclarationList
-              declarations={data.declarations.declarations}
-              selectedExternalId={selectedExternalId}
-              onSelect={openDetail}
-            />
-            <DeclarationDetailPanel
-              detail={detail}
-              isLoading={isDetailLoading}
-              isSyncing={isSyncing}
-              syncResult={syncResult}
-              onSync={() => void syncSelectedDeclaration()}
-            />
-          </div>
-        ) : null}
-      </section>
+            {isLoading ? <StatePanel message="Đang tải tờ khai từ API GateSync..." /> : null}
+            {!isLoading && !data?.session.authenticated ? (
+              <StatePanel message="Hãy kết nối phiên Cửa khẩu số chỉ đọc trước khi tải dữ liệu thật." />
+            ) : null}
+            {!isLoading &&
+            data?.session.authenticated &&
+            data.declarations.declarations.length === 0 ? (
+              <StatePanel message="Không tìm thấy tờ khai phù hợp với bộ lọc hiện tại." />
+            ) : null}
+            {!isLoading && data && data.declarations.declarations.length > 0 ? (
+              <div className="mt-5 grid gap-3 xl:grid-cols-[1fr_26rem]">
+                <DeclarationList
+                  declarations={data.declarations.declarations}
+                  selectedExternalId={selectedExternalId}
+                  onSelect={openDetail}
+                />
+                <DeclarationDetailPanel
+                  detail={detail}
+                  isLoading={isDetailLoading}
+                  isSyncing={isSyncing}
+                  syncResult={syncResult}
+                  onSync={() => void syncSelectedDeclaration()}
+                />
+              </div>
+            ) : null}
+          </section>
+        </>
+      ) : null}
     </AppShell>
   );
 }

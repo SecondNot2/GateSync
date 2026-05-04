@@ -9,6 +9,7 @@ import {
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { NoOrganizationState } from '@/components/no-organization-state';
 import {
   createAdminDriver,
   createAdminVehicle,
@@ -18,6 +19,7 @@ import {
   updateAdminDriver,
   updateAdminVehicle
 } from '@/lib/operations/data';
+import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
 import type { AdminDriver, AdminVehicle, AdminViewData } from '@/lib/operations/view-model';
 import {
   membershipRoleLabels,
@@ -56,6 +58,7 @@ const emptyDriverForm: DriverFormState = {
 export function AdminClient() {
   const [data, setData] = useState<AdminViewData>();
   const [error, setError] = useState<string>();
+  const [organizationIssue, setOrganizationIssue] = useState<OrganizationAccessIssue>();
   const [message, setMessage] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -74,6 +77,7 @@ export function AdminClient() {
     async function fetchData() {
       setIsLoading(true);
       setError(undefined);
+      setOrganizationIssue(undefined);
 
       try {
         const result = await loadAdminData();
@@ -83,6 +87,10 @@ export function AdminClient() {
         }
       } catch (loadError) {
         if (isMounted) {
+          if (isOrganizationAccessError(loadError)) {
+            setOrganizationIssue(loadError.issue);
+          }
+
           setError(
             loadError instanceof Error ? loadError.message : 'Không thể tải trang quản trị.'
           );
@@ -279,7 +287,12 @@ export function AdminClient() {
       }
     >
       {isLoading ? <StatePanel message="Đang tải dữ liệu quản trị từ GateSync API..." /> : null}
-      {!isLoading && error ? <StatePanel tone="error" message={error} /> : null}
+      {!isLoading && organizationIssue && error ? (
+        <NoOrganizationState issue={organizationIssue} message={error} />
+      ) : null}
+      {!isLoading && !organizationIssue && error ? (
+        <StatePanel tone="error" message={error} />
+      ) : null}
       {!isLoading && !error && data ? (
         <>
           {data.notice ? <NoticePanel message={data.notice} /> : null}

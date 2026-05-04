@@ -11,6 +11,7 @@ import type {
   UpdateVehiclePayload
 } from '@/lib/api/types';
 import { resolveWebApiSession } from '@/lib/api/session';
+import { OrganizationAccessError } from '@/lib/operations/errors';
 import type {
   AdminViewData,
   CuaKhauSoViewData,
@@ -256,25 +257,32 @@ async function resolveActiveOrganization(accessToken: string) {
     );
 
     if (suspendedOrganization) {
-      throw new Error(
-        `Quyền truy cập tổ chức ${suspendedOrganization.name} đang bị tạm dừng. Vui lòng liên hệ quản trị viên tổ chức.`
+      throw new OrganizationAccessError(
+        'SUSPENDED',
+        `Quyền truy cập tổ chức ${suspendedOrganization.name} đang bị tạm dừng. Vui lòng liên hệ quản trị viên tổ chức.`,
+        suspendedOrganization.name
       );
     }
 
     if (removedOrganization) {
-      throw new Error(
-        `Tài khoản của bạn đã bị gỡ khỏi tổ chức ${removedOrganization.name}. Vui lòng liên hệ quản trị viên nếu cần khôi phục quyền truy cập.`
+      throw new OrganizationAccessError(
+        'REMOVED',
+        `Tài khoản của bạn đã bị gỡ khỏi tổ chức ${removedOrganization.name}. Vui lòng liên hệ quản trị viên nếu cần khôi phục quyền truy cập.`,
+        removedOrganization.name
       );
     }
 
     if (invitedOrganization) {
-      throw new Error(
-        `Lời mời vào tổ chức ${invitedOrganization.name} chưa được kích hoạt. Vui lòng kiểm tra email mời hoặc liên hệ quản trị viên.`
+      throw new OrganizationAccessError(
+        'INVITED',
+        `Lời mời vào tổ chức ${invitedOrganization.name} chưa được kích hoạt. Vui lòng kiểm tra email mời hoặc liên hệ quản trị viên.`,
+        invitedOrganization.name
       );
     }
 
-    throw new Error(
-      'Tài khoản của bạn chưa thuộc tổ chức đang hoạt động nào trong GateSync. Vui lòng liên hệ quản trị viên để được mời vào tổ chức.'
+    throw new OrganizationAccessError(
+      'NO_ORGANIZATION',
+      'Tài khoản của bạn chưa thuộc tổ chức đang hoạt động nào trong GateSync. Hãy tạo tổ chức doanh nghiệp hoặc dùng lời mời từ tổ chức hiện có.'
     );
   }
 

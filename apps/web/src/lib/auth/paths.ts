@@ -1,7 +1,15 @@
-export const defaultAuthenticatedPath = '/dashboard';
+export const onboardingPath = '/onboarding';
+export const defaultAuthenticatedPath = onboardingPath;
 export const loginPath = '/login';
+export const signupPath = '/signup';
 
-export const protectedPathPrefixes = ['/dashboard', '/trips', '/admin', '/integrations'] as const;
+export const protectedPathPrefixes = [
+  onboardingPath,
+  '/dashboard',
+  '/trips',
+  '/admin',
+  '/integrations'
+] as const;
 
 export type LoginReason = 'auth_required' | 'session_expired' | 'signed_out';
 

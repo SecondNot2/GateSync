@@ -12,6 +12,7 @@ import type {
   ApiTripEvent,
   ApiTripSummary,
   ApiVehicle,
+  CreateOrganizationPayload,
   CreateDriverPayload,
   CuaKhauSoLoginPayload,
   CreateTripEventPayload,
@@ -58,6 +59,9 @@ function buildCuaKhauSoQuery(params: ListCuaKhauSoDeclarationsParams = {}) {
 export const gatesyncApi = {
   listOrganizations: ({ accessToken }: AuthenticatedOptions) =>
     apiClient.get<ApiOrganization[]>('/organizations', { accessToken }),
+
+  createOrganization: (payload: CreateOrganizationPayload, { accessToken }: AuthenticatedOptions) =>
+    apiClient.post<ApiOrganization>('/organizations', payload, { accessToken }),
 
   listMemberships: (organizationId: string, { accessToken }: AuthenticatedOptions) =>
     apiClient.get<ApiMembership[]>(`/organizations/${organizationId}/memberships`, {

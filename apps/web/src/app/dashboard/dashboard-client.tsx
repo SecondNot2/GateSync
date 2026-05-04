@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { NoOrganizationState } from '@/components/no-organization-state';
 import { PriorityBadge, TripStatusBadge } from '@/components/status-badge';
 import { loadDashboardData } from '@/lib/operations/data';
+import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
 import type { DashboardViewData } from '@/lib/operations/view-model';
 import {
   formatDelay,
@@ -16,6 +18,7 @@ import {
 export function DashboardClient() {
   const [data, setData] = useState<DashboardViewData>();
   const [error, setError] = useState<string>();
+  const [organizationIssue, setOrganizationIssue] = useState<OrganizationAccessIssue>();
   const [isLoading, setIsLoading] = useState(true);
   const shellProps = data?.organization ? { organization: data.organization } : {};
 
@@ -25,6 +28,7 @@ export function DashboardClient() {
     async function loadData() {
       setIsLoading(true);
       setError(undefined);
+      setOrganizationIssue(undefined);
 
       try {
         const result = await loadDashboardData();
@@ -34,6 +38,10 @@ export function DashboardClient() {
         }
       } catch (loadError) {
         if (isMounted) {
+          if (isOrganizationAccessError(loadError)) {
+            setOrganizationIssue(loadError.issue);
+          }
+
           setError(
             loadError instanceof Error ? loadError.message : 'Không thể tải bảng điều phối.'
           );
@@ -69,7 +77,10 @@ export function DashboardClient() {
       }
     >
       {isLoading ? <DashboardLoadingState /> : null}
-      {!isLoading && error ? <DashboardErrorState message={error} /> : null}
+      {!isLoading && organizationIssue && error ? (
+        <NoOrganizationState issue={organizationIssue} message={error} />
+      ) : null}
+      {!isLoading && !organizationIssue && error ? <DashboardErrorState message={error} /> : null}
       {!isLoading && !error && data ? <DashboardContent data={data} /> : null}
     </AppShell>
   );

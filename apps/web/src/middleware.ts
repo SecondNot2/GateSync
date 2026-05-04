@@ -3,17 +3,22 @@ import {
   defaultAuthenticatedPath,
   isProtectedAppPath,
   loginPath,
-  sanitizeAuthenticatedRedirectPath
+  sanitizeAuthenticatedRedirectPath,
+  signupPath
 } from '@/lib/auth/paths';
-import { clearAuthSessionCookies, readAuthCookieState, setAuthSessionCookies } from '@/lib/auth/session-cookies';
+import {
+  clearAuthSessionCookies,
+  readAuthCookieState,
+  setAuthSessionCookies
+} from '@/lib/auth/session-cookies';
 import { webEnv } from '@/lib/env';
 import { createServerSupabaseAuthClient } from '@/lib/supabase/server';
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  if (pathname === loginPath) {
-    return handleLoginPath(request);
+  if (pathname === loginPath || pathname === signupPath) {
+    return handlePublicAuthPath(request);
   }
 
   if (isProtectedAppPath(pathname)) {
@@ -24,10 +29,18 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/login', '/dashboard/:path*', '/trips/:path*', '/admin/:path*', '/integrations/:path*']
+  matcher: [
+    '/login',
+    '/signup',
+    '/onboarding/:path*',
+    '/dashboard/:path*',
+    '/trips/:path*',
+    '/admin/:path*',
+    '/integrations/:path*'
+  ]
 };
 
-async function handleLoginPath(request: NextRequest) {
+async function handlePublicAuthPath(request: NextRequest) {
   const cookieState = readAuthCookieState(request);
 
   if (cookieState.hasUsableAccessToken) {
@@ -38,7 +51,9 @@ async function handleLoginPath(request: NextRequest) {
     const refreshedResponse = await refreshSession(request, NextResponse.next());
 
     if (refreshedResponse) {
-      const redirectPath = sanitizeAuthenticatedRedirectPath(request.nextUrl.searchParams.get('next'));
+      const redirectPath = sanitizeAuthenticatedRedirectPath(
+        request.nextUrl.searchParams.get('next')
+      );
       const response = NextResponse.redirect(new URL(redirectPath, request.url));
       copyAuthCookies(refreshedResponse, response);
 

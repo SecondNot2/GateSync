@@ -258,6 +258,15 @@ export type CuaKhauSoLoginPayload = {
   password: string;
 };
 
+export type CreateOrganizationPayload = {
+  name: string;
+  type?: OrganizationType;
+  taxCode?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+};
+
 export type ApiCuaKhauSoSession = {
   authenticated: boolean;
   username?: string;

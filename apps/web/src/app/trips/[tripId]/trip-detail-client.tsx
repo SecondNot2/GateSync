@@ -5,9 +5,11 @@ import Link from 'next/link';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { NoOrganizationState } from '@/components/no-organization-state';
 import { PriorityBadge, TripStatusBadge } from '@/components/status-badge';
 import { TripTimeline } from '@/components/trip-timeline';
 import { createManualTripEvent, loadTripDetailData } from '@/lib/operations/data';
+import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
 import type { TripDetailViewData } from '@/lib/operations/view-model';
 import {
   formatDelay,
@@ -47,6 +49,7 @@ function resolveManualEventOptions(actions?: TripEventType[]) {
 export function TripDetailClient({ tripId }: { tripId: string }) {
   const [data, setData] = useState<TripDetailViewData>();
   const [error, setError] = useState<string>();
+  const [organizationIssue, setOrganizationIssue] = useState<OrganizationAccessIssue>();
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [eventType, setEventType] = useState<TripEventType>('ARRIVED_BORDER_AREA');
@@ -62,6 +65,7 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
     async function loadData() {
       setIsLoading(true);
       setError(undefined);
+      setOrganizationIssue(undefined);
 
       try {
         const result = await loadTripDetailData(tripId);
@@ -71,6 +75,10 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
         }
       } catch (loadError) {
         if (isMounted) {
+          if (isOrganizationAccessError(loadError)) {
+            setOrganizationIssue(loadError.issue);
+          }
+
           setError(
             loadError instanceof Error ? loadError.message : 'Không thể tải chi tiết chuyến.'
           );
@@ -149,7 +157,12 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
       }
     >
       {isLoading ? <StatePanel message="Đang tải chi tiết chuyến từ GateSync API..." /> : null}
-      {!isLoading && error ? <StatePanel tone="error" message={error} /> : null}
+      {!isLoading && organizationIssue && error ? (
+        <NoOrganizationState issue={organizationIssue} message={error} />
+      ) : null}
+      {!isLoading && !organizationIssue && error ? (
+        <StatePanel tone="error" message={error} />
+      ) : null}
       {!isLoading && !error && data && trip ? (
         <>
           {data.notice ? (

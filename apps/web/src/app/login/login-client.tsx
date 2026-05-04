@@ -105,7 +105,8 @@ export function LoginClient({ nextPath, reason }: LoginClientProps) {
             Mở bảng điều phối an toàn cho ca vận hành.
           </h1>
           <p className="mt-4 text-sm leading-6 text-slate-600 sm:text-base">
-            Dùng tài khoản GateSync của doanh nghiệp để theo dõi chuyến, sự kiện, quản trị nội bộ và tích hợp dữ liệu được ủy quyền.
+            Dùng tài khoản GateSync của doanh nghiệp để theo dõi chuyến, sự kiện, quản trị nội bộ và
+            tích hợp dữ liệu được ủy quyền.
           </p>
 
           {reason ? (
@@ -153,14 +154,15 @@ export function LoginClient({ nextPath, reason }: LoginClientProps) {
           </form>
 
           <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-            Tài khoản Cửa khẩu số chỉ được kết nối sau khi bạn đã đăng nhập GateSync và có quyền trong tổ chức.
+            Tài khoản Cửa khẩu số chỉ được kết nối sau khi bạn đã đăng nhập GateSync và có quyền
+            trong tổ chức.
           </div>
         </div>
 
         <div className="flex flex-col gap-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-          <span>Chưa có tài khoản? Vui lòng liên hệ quản trị viên tổ chức.</span>
-          <Link href="/" className="font-semibold text-sky-700 hover:text-sky-800">
-            Quay về giới thiệu
+          <span>Chưa có tài khoản GateSync?</span>
+          <Link href="/signup" className="font-semibold text-sky-700 hover:text-sky-800">
+            Đăng ký hoặc nhận lời mời
           </Link>
         </div>
       </section>
@@ -174,7 +176,8 @@ export function LoginClient({ nextPath, reason }: LoginClientProps) {
             Một danh tính GateSync cho toàn bộ vận hành biên giới.
           </h2>
           <p className="mt-5 max-w-xl text-base leading-7 text-slate-300">
-            Dashboard, chuyến, quản trị và tích hợp chỉ mở sau khi xác thực. Backend vẫn kiểm tra membership và RBAC ở từng API path.
+            Dashboard, chuyến, quản trị và tích hợp chỉ mở sau khi xác thực. Backend vẫn kiểm tra
+            membership và RBAC ở từng API path.
           </p>
         </div>
 
