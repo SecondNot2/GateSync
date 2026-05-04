@@ -361,8 +361,8 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
                   <h2 className="mt-2 text-2xl font-bold text-slate-950">Lịch sử vận hành</h2>
                 </div>
                 <p className="max-w-xl text-sm leading-6 text-slate-600">
-                  Mỗi sự kiện thể hiện một mốc vận hành quan trọng để đội điều phối theo dõi lại
-                  lịch sử chuyến.
+                  Mỗi sự kiện thể hiện một mốc vận hành quan trọng kèm nguồn ghi nhận như thủ công,
+                  tài xế, Cửa khẩu số, bãi, GPS hoặc hệ thống.
                 </p>
               </div>
               <div className="mt-5">

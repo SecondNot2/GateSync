@@ -20,6 +20,7 @@ import type { TripsViewData } from '@/lib/operations/view-model';
 import {
   formatDelay,
   tripDirectionLabels,
+  tripEventTypeLabels,
   tripExceptionFilterLabels,
   tripStatusLabels,
   tripTypeLabels
@@ -50,6 +51,7 @@ export function TripsClient() {
   const priorityTrip = data?.trips.find(
     (trip) => trip.priority !== 'NORMAL' || trip.delayMinutes > 0
   );
+  const activeFilterCount = countActiveFilters(filters);
 
   useEffect(() => {
     setSearch(filters.search ?? '');
@@ -183,147 +185,162 @@ export function TripsClient() {
       {!organizationIssue ? (
         <>
           <section className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
-            <form
-              onSubmit={applyFilters}
-              className="grid gap-3 xl:grid-cols-[1.4fr_0.8fr_0.8fr] xl:items-end"
-            >
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Tìm chuyến
-                </span>
-                <input
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  placeholder="Nhập mã chuyến, biển số, tài xế hoặc cửa khẩu"
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Trạng thái
-                </span>
-                <select
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value)}
-                >
-                  <option value="">Tất cả trạng thái</option>
-                  {tripStatuses.map((tripStatus) => (
-                    <option key={tripStatus} value={tripStatus}>
-                      {tripStatusLabels[tripStatus]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button className="min-h-12 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
-                  Tìm kiếm
-                </button>
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
-                >
-                  Đặt lại lọc
-                </button>
-              </div>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Cửa khẩu
-                </span>
-                <input
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  placeholder="Mã cửa khẩu trong hệ thống"
-                  value={borderGateId}
-                  onChange={(event) => setBorderGateId(event.target.value)}
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Bãi
-                </span>
-                <input
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  placeholder="Mã bãi trong hệ thống"
-                  value={yardId}
-                  onChange={(event) => setYardId(event.target.value)}
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Ngoại lệ
-                </span>
-                <select
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  value={exception}
-                  onChange={(event) => setException(event.target.value)}
-                >
-                  <option value="">Tất cả ngoại lệ</option>
-                  {tripExceptionFilters.map((filter) => (
-                    <option key={filter} value={filter}>
-                      {tripExceptionFilterLabels[filter]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Tài xế
-                </span>
-                <input
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  placeholder="Mã hồ sơ tài xế"
-                  value={driverProfileId}
-                  onChange={(event) => setDriverProfileId(event.target.value)}
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Phương tiện
-                </span>
-                <input
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  placeholder="Mã phương tiện"
-                  value={vehicleId}
-                  onChange={(event) => setVehicleId(event.target.value)}
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Chủ hàng
-                </span>
-                <input
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                  placeholder="Mã tổ chức chủ hàng"
-                  value={cargoOwnerOrganizationId}
-                  onChange={(event) => setCargoOwnerOrganizationId(event.target.value)}
-                />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
+            <QuickFilterLinks filters={filters} />
+            <form onSubmit={applyFilters} className="mt-4 grid gap-3">
+              <div className="grid gap-3 xl:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr] xl:items-end">
                 <label className="block">
                   <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Từ ngày
+                    Tìm chuyến
                   </span>
                   <input
                     className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                    type="date"
-                    value={from}
-                    onChange={(event) => setFrom(event.target.value)}
+                    placeholder="Nhập mã chuyến, biển số, tài xế hoặc cửa khẩu"
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
                   />
                 </label>
                 <label className="block">
                   <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Đến ngày
+                    Trạng thái
                   </span>
-                  <input
-                    className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                    type="date"
-                    value={to}
-                    onChange={(event) => setTo(event.target.value)}
-                  />
+                  <select
+                    className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                    value={status}
+                    onChange={(event) => setStatus(event.target.value)}
+                  >
+                    <option value="">Tất cả trạng thái</option>
+                    {tripStatuses.map((tripStatus) => (
+                      <option key={tripStatus} value={tripStatus}>
+                        {tripStatusLabels[tripStatus]}
+                      </option>
+                    ))}
+                  </select>
                 </label>
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Ngoại lệ
+                  </span>
+                  <select
+                    className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                    value={exception}
+                    onChange={(event) => setException(event.target.value)}
+                  >
+                    <option value="">Tất cả ngoại lệ</option>
+                    {tripExceptionFilters.map((filter) => (
+                      <option key={filter} value={filter}>
+                        {tripExceptionFilterLabels[filter]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button className="min-h-12 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+                    Tìm kiếm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
+                  >
+                    Đặt lại
+                  </button>
+                </div>
               </div>
+
+              <details
+                key={`advanced-${searchKey}`}
+                open={hasAdvancedFilters(filters) || undefined}
+                className="rounded-3xl border border-slate-100 bg-slate-50 p-4"
+              >
+                <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+                  Lọc nâng cao
+                  <span className="ml-2 rounded-full bg-white px-3 py-1 text-xs text-slate-500">
+                    {activeFilterCount} bộ lọc đang dùng
+                  </span>
+                </summary>
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Cửa khẩu
+                    </span>
+                    <input
+                      className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                      placeholder="Mã cửa khẩu trong hệ thống"
+                      value={borderGateId}
+                      onChange={(event) => setBorderGateId(event.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Bãi
+                    </span>
+                    <input
+                      className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                      placeholder="Mã bãi trong hệ thống"
+                      value={yardId}
+                      onChange={(event) => setYardId(event.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Tài xế
+                    </span>
+                    <input
+                      className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                      placeholder="Mã hồ sơ tài xế"
+                      value={driverProfileId}
+                      onChange={(event) => setDriverProfileId(event.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Phương tiện
+                    </span>
+                    <input
+                      className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                      placeholder="Mã phương tiện"
+                      value={vehicleId}
+                      onChange={(event) => setVehicleId(event.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Chủ hàng
+                    </span>
+                    <input
+                      className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                      placeholder="Mã tổ chức chủ hàng"
+                      value={cargoOwnerOrganizationId}
+                      onChange={(event) => setCargoOwnerOrganizationId(event.target.value)}
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Từ ngày
+                      </span>
+                      <input
+                        className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                        type="date"
+                        value={from}
+                        onChange={(event) => setFrom(event.target.value)}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Đến ngày
+                      </span>
+                      <input
+                        className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                        type="date"
+                        value={to}
+                        onChange={(event) => setTo(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </details>
             </form>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-8">
@@ -440,12 +457,80 @@ function TripsList({ data }: { data: TripsViewData }) {
               <p className="text-xs font-semibold text-amber-700">
                 {formatDelay(trip.delayMinutes)}
               </p>
+              <p className="text-xs text-slate-500">Cập nhật trạng thái: {trip.statusUpdatedAt}</p>
             </div>
             <div className="space-y-3">
               <PriorityBadge priority={trip.priority} />
-              <p className="text-xs leading-5 text-slate-500">{trip.nextAction}</p>
+              <div>
+                <p className="text-xs font-semibold text-slate-700">{trip.nextActionLabel}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{trip.nextAction}</p>
+              </div>
+              {trip.availableManualActions.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {trip.availableManualActions.slice(0, 2).map((action) => (
+                    <span
+                      key={action}
+                      className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700"
+                    >
+                      {tripEventTypeLabels[action]}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               <span className="inline-flex text-sm font-semibold text-sky-700">Xem chi tiết</span>
             </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function QuickFilterLinks({ filters }: { filters: ListTripsParams }) {
+  const quickFilters: Array<{
+    label: string;
+    href: string;
+    active: boolean;
+  }> = [
+    {
+      label: 'Cần xử lý',
+      href: '/trips?exception=ATTENTION',
+      active: filters.exception === 'ATTENTION'
+    },
+    {
+      label: 'Đang chậm',
+      href: '/trips?exception=DELAYED',
+      active: filters.exception === 'DELAYED'
+    },
+    {
+      label: 'Chờ bãi',
+      href: '/trips?status=WAITING_YARD_ENTRY',
+      active: filters.status === 'WAITING_YARD_ENTRY'
+    },
+    {
+      label: 'Cần kiểm hóa',
+      href: '/trips?exception=INSPECTION',
+      active: filters.exception === 'INSPECTION'
+    }
+  ];
+
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        Bộ lọc nhanh
+      </p>
+      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+        {quickFilters.map((filter) => (
+          <Link
+            key={filter.href}
+            href={filter.href}
+            className={`min-h-11 shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${
+              filter.active
+                ? 'bg-slate-950 text-white'
+                : 'border border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:text-sky-700'
+            }`}
+          >
+            {filter.label}
           </Link>
         ))}
       </div>
@@ -533,6 +618,33 @@ function toFilters(searchParams: URLSearchParams): ListTripsParams {
   }
 
   return filters;
+}
+
+function countActiveFilters(filters: ListTripsParams) {
+  return [
+    filters.search,
+    filters.status,
+    filters.borderGateId,
+    filters.yardId,
+    filters.driverProfileId,
+    filters.vehicleId,
+    filters.cargoOwnerOrganizationId,
+    filters.exception,
+    filters.from,
+    filters.to
+  ].filter(Boolean).length;
+}
+
+function hasAdvancedFilters(filters: ListTripsParams) {
+  return Boolean(
+    filters.borderGateId ||
+    filters.yardId ||
+    filters.driverProfileId ||
+    filters.vehicleId ||
+    filters.cargoOwnerOrganizationId ||
+    filters.from ||
+    filters.to
+  );
 }
 
 function isTripStatus(value: string | null): value is TripStatus {

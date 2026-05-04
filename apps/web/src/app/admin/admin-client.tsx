@@ -409,6 +409,13 @@ export function AdminClient() {
             </div>
           </section>
 
+          <AdminSetupWizard
+            data={data}
+            onInviteMember={startInviteMember}
+            onCreateVehicle={startCreateVehicle}
+            onCreateDriver={startCreateDriver}
+          />
+
           <section className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -439,31 +446,39 @@ export function AdminClient() {
               />
             ) : null}
             <div className="mt-5 divide-y divide-slate-100 overflow-hidden rounded-3xl border border-slate-100 bg-white">
-              {data.members.map((member) => (
-                <div
-                  key={member.id}
-                  className="grid gap-4 px-5 py-5 xl:grid-cols-[1fr_1fr_1fr_0.8fr] xl:items-center"
-                >
-                  <div>
-                    <p className="font-semibold text-slate-950">{member.name}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Hoạt động gần nhất: {member.lastActiveAt}
-                    </p>
+              {data.members.length > 0 ? (
+                data.members.map((member) => (
+                  <div
+                    key={member.id}
+                    className="grid gap-4 px-5 py-5 xl:grid-cols-[1fr_1fr_1fr_0.8fr] xl:items-center"
+                  >
+                    <div>
+                      <p className="font-semibold text-slate-950">{member.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Hoạt động gần nhất: {member.lastActiveAt}
+                      </p>
+                    </div>
+                    <p className="text-sm text-slate-600">{member.email}</p>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        {membershipRoleLabels[member.role]}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        {roleDescriptions[member.role]}
+                      </p>
+                    </div>
+                    <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                      {membershipStatusLabels[member.status]}
+                    </span>
                   </div>
-                  <p className="text-sm text-slate-600">{member.email}</p>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">
-                      {membershipRoleLabels[member.role]}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      {roleDescriptions[member.role]}
-                    </p>
-                  </div>
-                  <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                    {membershipStatusLabels[member.status]}
-                  </span>
-                </div>
-              ))}
+                ))
+              ) : (
+                <EmptyPanel
+                  message="Chưa có thành viên nào khác trong tổ chức."
+                  actionLabel={canManageMembers ? 'Mời thành viên đầu tiên' : undefined}
+                  onAction={canManageMembers ? startInviteMember : undefined}
+                />
+              )}
             </div>
           </section>
 
@@ -497,7 +512,11 @@ export function AdminClient() {
                     />
                   ))
                 ) : (
-                  <EmptyPanel message="Chưa có phương tiện nào trong tổ chức." />
+                  <EmptyPanel
+                    message="Chưa có phương tiện nào trong tổ chức."
+                    actionLabel={canManageFleet ? 'Thêm phương tiện đầu tiên' : undefined}
+                    onAction={canManageFleet ? startCreateVehicle : undefined}
+                  />
                 )}
               </div>
             </FleetPanel>
@@ -530,7 +549,11 @@ export function AdminClient() {
                     />
                   ))
                 ) : (
-                  <EmptyPanel message="Chưa có hồ sơ tài xế nào trong tổ chức." />
+                  <EmptyPanel
+                    message="Chưa có hồ sơ tài xế nào trong tổ chức."
+                    actionLabel={canManageFleet ? 'Thêm tài xế đầu tiên' : undefined}
+                    onAction={canManageFleet ? startCreateDriver : undefined}
+                  />
                 )}
               </div>
             </FleetPanel>
@@ -552,6 +575,8 @@ function InvitationForm({
   onChange: (value: InvitationFormState) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const selectedRoleDescription = roleDescriptions[value.role];
+
   return (
     <form onSubmit={onSubmit} className="mt-5 grid gap-3 rounded-3xl bg-slate-50 p-4">
       <InputField
@@ -567,8 +592,90 @@ function InvitationForm({
         options={inviteRoles.map((role) => ({ value: role, label: membershipRoleLabels[role] }))}
         onChange={(role) => onChange({ ...value, role: role as MembershipRole })}
       />
+      <p className="rounded-2xl border border-sky-100 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+        {selectedRoleDescription}
+      </p>
       <SubmitButton isSaving={isSaving} label="Tạo mã mời" />
     </form>
+  );
+}
+
+function AdminSetupWizard({
+  data,
+  onInviteMember,
+  onCreateVehicle,
+  onCreateDriver
+}: {
+  data: AdminViewData;
+  onInviteMember: () => void;
+  onCreateVehicle: () => void;
+  onCreateDriver: () => void;
+}) {
+  const canManageMembers = data.profile.canManageMembers;
+  const canManageFleet = data.profile.canManageFleet;
+  const steps = [
+    {
+      title: 'Mời đúng người vào tổ chức',
+      detail: `${data.members.length} thành viên hiện có. Chọn vai trò theo nhiệm vụ thật để tránh cấp quyền rộng.`,
+      actionLabel: canManageMembers ? 'Mời thành viên' : 'Chỉ xem thành viên',
+      disabled: !canManageMembers,
+      onAction: onInviteMember
+    },
+    {
+      title: 'Thêm phương tiện vận hành',
+      detail: `${data.vehicles.length} phương tiện đang quản lý. Biển số và loại xe là dữ liệu nền cho điều phối.`,
+      actionLabel: canManageFleet ? 'Thêm phương tiện' : 'Không có quyền sửa đội xe',
+      disabled: !canManageFleet,
+      onAction: onCreateVehicle
+    },
+    {
+      title: 'Tạo hồ sơ tài xế',
+      detail: `${data.drivers.length} hồ sơ tài xế. Hồ sơ có thể dùng nội bộ trước khi liên kết tài khoản đăng nhập.`,
+      actionLabel: canManageFleet ? 'Thêm tài xế' : 'Không có quyền sửa tài xế',
+      disabled: !canManageFleet,
+      onAction: onCreateDriver
+    }
+  ];
+
+  return (
+    <section className="rounded-[1.75rem] border border-sky-100 bg-sky-50 p-4 shadow-soft sm:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+            Trình thiết lập vận hành
+          </p>
+          <h2 className="mt-2 text-2xl font-bold text-slate-950">
+            Chuẩn bị tổ chức trước ca chạy thật
+          </h2>
+        </div>
+        <span className="w-fit rounded-full bg-white px-4 py-2 text-sm font-semibold text-sky-700">
+          {membershipRoleLabels[data.profile.currentUserRole]}
+        </span>
+      </div>
+      <div className="mt-5 grid gap-3 lg:grid-cols-3">
+        {steps.map((step, index) => (
+          <div key={step.title} className="rounded-3xl border border-white bg-white/80 p-4">
+            <div className="flex items-start gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">
+                {index + 1}
+              </span>
+              <div>
+                <p className="font-semibold text-slate-950">{step.title}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{step.detail}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={step.disabled}
+              onClick={step.onAction}
+              className="mt-4 min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              {step.actionLabel}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -589,6 +696,14 @@ function VehicleForm({
 }) {
   return (
     <form onSubmit={onSubmit} className="mt-5 grid gap-3 rounded-3xl bg-slate-50 p-4">
+      <GuidedFormHeader
+        title={isEditing ? 'Cập nhật phương tiện' : 'Thêm phương tiện theo từng bước'}
+        steps={[
+          'Nhập biển số đúng thực tế vận hành.',
+          'Chọn loại xe và hình thức sở hữu.',
+          'Gán tài xế mặc định nếu đội xe đã có hồ sơ tài xế.'
+        ]}
+      />
       <InputField
         label="Biển số"
         value={value.plateNumber}
@@ -649,6 +764,14 @@ function DriverForm({
 }) {
   return (
     <form onSubmit={onSubmit} className="mt-5 grid gap-3 rounded-3xl bg-slate-50 p-4">
+      <GuidedFormHeader
+        title={isEditing ? 'Cập nhật hồ sơ tài xế' : 'Thêm tài xế theo từng bước'}
+        steps={[
+          'Nhập tên hiển thị để điều phối viên nhận diện nhanh.',
+          'Bổ sung số điện thoại để liên hệ trong ca trực.',
+          'Cập nhật số GPLX nếu doanh nghiệp quản lý hồ sơ nội bộ.'
+        ]}
+      />
       <InputField
         label="Tên tài xế"
         value={value.displayName}
@@ -783,6 +906,22 @@ function FleetPanel({
         </button>
       </div>
       {children}
+    </div>
+  );
+}
+
+function GuidedFormHeader({ title, steps }: { title: string; steps: string[] }) {
+  return (
+    <div className="rounded-3xl border border-white bg-white p-4">
+      <p className="font-semibold text-slate-950">{title}</p>
+      <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
+        {steps.map((step, index) => (
+          <div key={step} className="rounded-2xl bg-slate-50 p-3">
+            <span className="font-semibold text-sky-700">Bước {index + 1}: </span>
+            {step}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -953,10 +1092,27 @@ function StatePanel({
   );
 }
 
-function EmptyPanel({ message }: { message: string }) {
+function EmptyPanel({
+  message,
+  actionLabel,
+  onAction
+}: {
+  message: string;
+  actionLabel?: string | undefined;
+  onAction?: (() => void) | undefined;
+}) {
   return (
     <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-sm font-semibold text-slate-500">
-      {message}
+      <p>{message}</p>
+      {actionLabel && onAction ? (
+        <button
+          type="button"
+          onClick={onAction}
+          className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+        >
+          {actionLabel}
+        </button>
+      ) : null}
     </div>
   );
 }
