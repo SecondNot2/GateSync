@@ -22,3 +22,5 @@ Thumbs.db
 apps/api/generated/
 packages/database/generated/
 
+graphify-out/
+
