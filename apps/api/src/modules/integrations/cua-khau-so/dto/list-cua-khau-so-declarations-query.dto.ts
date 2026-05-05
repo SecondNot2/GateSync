@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import type {
   CuaKhauSoDirection,
   CuaKhauSoListStatus,
@@ -57,6 +57,20 @@ export class ListCuaKhauSoDeclarationsQueryDto {
   @IsOptional()
   @IsIn(cuaKhauSoDirections)
   direction?: CuaKhauSoDirection;
+
+  @ApiPropertyOptional({
+    example: '2026-04-28T00:00:00.000Z'
+  })
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-05-05T23:59:59.999Z'
+  })
+  @IsOptional()
+  @IsDateString()
+  to?: string;
 
   toExternalParams() {
     const params = {

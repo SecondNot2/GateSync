@@ -229,6 +229,8 @@ export type CuaKhauSoProcedureStep = {
   label: string;
   done: boolean;
   occurredAt?: string;
+  status?: 'DONE' | 'WAITING_AUTHORITY' | 'PENDING';
+  description?: string;
 };
 
 export type CuaKhauSoDeclarationSummary = {

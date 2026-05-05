@@ -145,12 +145,23 @@ test('syncDeclaration upserts a CustomsDeclaration and records idempotent TripEv
       findFirst: async () => ({
         id: '00000000-0000-4000-8000-000000000020',
         tripCode: 'GS-IMPORT-001',
-        customsDeclarationId: null
+        customsDeclarationId: null,
+        vehicleId: null,
+        driverProfileId: null
       }),
       update: async (args: Record<string, unknown>) => {
         tripUpdateArgs = args;
-        return args;
+        return {
+          id: '00000000-0000-4000-8000-000000000020',
+          tripCode: 'GS-IMPORT-001',
+          customsDeclarationId: '00000000-0000-4000-8000-000000000013',
+          vehicleId: null,
+          driverProfileId: null
+        };
       }
+    },
+    vehicle: {
+      findFirst: async () => null
     },
     integrationAccount: {
       update: async () => ({ id: 'account-1' })
@@ -253,10 +264,15 @@ test('syncDeclaration creates a GateSync Trip when no matching trip exists', asy
         return {
           id: '00000000-0000-4000-8000-000000000021',
           tripCode: data.tripCode,
-          customsDeclarationId: data.customsDeclarationId
+          customsDeclarationId: data.customsDeclarationId,
+          vehicleId: null,
+          driverProfileId: null
         };
       },
       update: async () => undefined
+    },
+    vehicle: {
+      findFirst: async () => null
     },
     tripParticipant: {
       create: async ({ data }: { data: Record<string, unknown> }) => {

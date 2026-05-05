@@ -222,6 +222,9 @@ export class DriversService {
     return this.prisma.trip.findMany({
       where: {
         deletedAt: null,
+        currentStatus: {
+          notIn: ['COMPLETED', 'CANCELLED']
+        },
         OR: [
           {
             driverProfileId: {
@@ -233,6 +236,16 @@ export class DriversService {
               some: {
                 userId: user.id,
                 role: 'DRIVER'
+              }
+            }
+          },
+          {
+            vehicle: {
+              is: {
+                defaultDriverId: {
+                  in: driverProfileIds
+                },
+                deletedAt: null
               }
             }
           }
@@ -265,13 +278,16 @@ export class DriversService {
       },
       orderBy: [
         {
+          currentStatusUpdatedAt: 'desc'
+        },
+        {
           plannedStartAt: 'desc'
         },
         {
           createdAt: 'desc'
         }
       ],
-      take: 50
+      take: 1
     });
   }
 
@@ -286,6 +302,9 @@ export class DriversService {
       where: {
         id: tripId,
         deletedAt: null,
+        currentStatus: {
+          notIn: ['COMPLETED', 'CANCELLED']
+        },
         OR: [
           {
             driverProfile: {
@@ -298,6 +317,17 @@ export class DriversService {
               some: {
                 userId: user.id,
                 role: 'DRIVER'
+              }
+            }
+          },
+          {
+            vehicle: {
+              is: {
+                defaultDriver: {
+                  userId: user.id,
+                  deletedAt: null
+                },
+                deletedAt: null
               }
             }
           }

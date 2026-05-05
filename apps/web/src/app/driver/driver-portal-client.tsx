@@ -6,7 +6,7 @@ import { Button, SelectInput, TextInput, TextareaInput } from '@/components/ui';
 import type { ApiTripSummary, CreateDriverTripMediaPayload } from '@/lib/api/types';
 import { createMyDriverTripMedia, loadMyDriverTrips } from '@/lib/operations/data';
 import { formatApiDateTime } from '@/lib/operations/view-model';
-import { tripStatusLabels } from '@/lib/ui-labels';
+import { tripEventTypeLabels, tripStatusLabels } from '@/lib/ui-labels';
 
 const mediaTypeOptions = [
   { value: 'IMAGE', label: 'Hình ảnh' },
@@ -27,6 +27,7 @@ export function DriverPortalClient() {
   const [error, setError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const currentTrip = trips[0];
 
   useEffect(() => {
     let isMounted = true;
@@ -40,7 +41,7 @@ export function DriverPortalClient() {
 
         if (isMounted) {
           setTrips(result);
-          setSelectedTripId((current) => current || result[0]?.id || '');
+          setSelectedTripId(result[0]?.id || '');
         }
       } catch (loadError) {
         if (isMounted) {
@@ -62,11 +63,26 @@ export function DriverPortalClient() {
     };
   }, []);
 
+  async function refreshTrips() {
+    setIsLoading(true);
+    setError(undefined);
+
+    try {
+      const result = await loadMyDriverTrips();
+      setTrips(result);
+      setSelectedTripId(result[0]?.id || '');
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Không thể tải chuyến của tài xế.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   async function submitMedia(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!selectedTripId) {
-      setError('Hãy chọn một chuyến được gán cho tài xế.');
+      setError('Hiện chưa có chuyến đang chạy được gán cho tài xế.');
       return;
     }
 
@@ -123,10 +139,11 @@ export function DriverPortalClient() {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
             Cổng tài xế
           </p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-950">Chuyến được giao và minh chứng</h1>
+          <h1 className="mt-2 text-3xl font-bold text-slate-950">Chuyến hiện tại của bạn</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Tài xế chỉ thấy các chuyến được gán trực tiếp cho tài khoản của mình. Minh chứng được
-            ghi vào timeline GateSync, không cấp quyền truy cập dữ liệu tổ chức rộng hơn.
+            Tài xế chỉ thấy một chuyến chưa hoàn thành khớp với hồ sơ nội bộ, xe mặc định hoặc phân
+            công trực tiếp. Minh chứng được ghi vào timeline GateSync, không cấp quyền truy cập dữ
+            liệu tổ chức rộng hơn.
           </p>
         </section>
 
@@ -138,52 +155,22 @@ export function DriverPortalClient() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Danh sách chuyến
+                  Chuyến đang thực hiện
                 </p>
                 <h2 className="mt-1 text-xl font-bold text-slate-950">
-                  {isLoading ? 'Đang tải...' : `${trips.length} chuyến`}
+                  {isLoading
+                    ? 'Đang tải...'
+                    : currentTrip
+                      ? currentTrip.tripCode
+                      : 'Chưa có chuyến hiện tại'}
                 </h2>
               </div>
-              <Button type="button" variant="secondary" onClick={() => void loadMyDriverTrips()}>
+              <Button type="button" variant="secondary" onClick={() => void refreshTrips()}>
                 Tải lại
               </Button>
             </div>
 
-            <div className="mt-4 grid gap-3">
-              {trips.map((trip) => (
-                <button
-                  key={trip.id}
-                  type="button"
-                  onClick={() => setSelectedTripId(trip.id)}
-                  className={`rounded-3xl border px-4 py-4 text-left transition ${
-                    selectedTripId === trip.id
-                      ? 'border-sky-200 bg-sky-50 ring-2 ring-sky-100'
-                      : 'border-slate-100 bg-slate-50 hover:border-sky-100 hover:bg-white'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-bold text-slate-950">{trip.tripCode}</p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {trip.vehicle?.plateNumber ?? 'Chưa có xe'} ·{' '}
-                        {trip.borderGate?.name ?? 'Chưa có cửa khẩu'}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-700 ring-1 ring-slate-200">
-                      {tripStatusLabels[trip.currentStatus]}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xs text-slate-500">
-                    Cập nhật {formatApiDateTime(trip.currentStatusUpdatedAt)}
-                  </p>
-                </button>
-              ))}
-              {!isLoading && trips.length === 0 ? (
-                <p className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-600">
-                  Chưa có chuyến nào được gán cho tài khoản tài xế này.
-                </p>
-              ) : null}
-            </div>
+            <CurrentTripCard trip={currentTrip} isLoading={isLoading} />
           </div>
 
           <form
@@ -194,6 +181,13 @@ export function DriverPortalClient() {
               Gửi minh chứng
             </p>
             <h2 className="mt-1 text-xl font-bold text-slate-950">Ảnh, tài liệu hoặc URL</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Minh chứng sẽ được gắn vào chuyến hiện tại{' '}
+              <span className="font-bold text-slate-950">
+                {currentTrip?.tripCode ?? 'chưa xác định'}
+              </span>
+              .
+            </p>
             <div className="mt-4 grid gap-3">
               <SelectInput
                 label="Loại minh chứng"
@@ -233,7 +227,7 @@ export function DriverPortalClient() {
               type="submit"
               fullWidth
               className="mt-4"
-              disabled={isSubmitting || !selectedTripId || !fileName.trim()}
+              disabled={isSubmitting || !selectedTripId || !currentTrip || !fileName.trim()}
             >
               {isSubmitting ? 'Đang gửi...' : 'Gửi minh chứng'}
             </Button>
@@ -245,6 +239,95 @@ export function DriverPortalClient() {
         </section>
       </div>
     </main>
+  );
+}
+
+function CurrentTripCard({
+  trip,
+  isLoading
+}: {
+  trip: ApiTripSummary | undefined;
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <div className="mt-4 rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-600">
+        Đang xác định chuyến hiện tại của tài xế...
+      </div>
+    );
+  }
+
+  if (!trip) {
+    return (
+      <div className="mt-4 rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-600">
+        Chưa có chuyến đang chạy được gán cho tài khoản, hồ sơ tài xế hoặc xe mặc định của bạn.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 grid gap-4">
+      <div className="rounded-3xl border border-sky-100 bg-sky-50 px-5 py-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+              Mã chuyến
+            </p>
+            <p className="mt-1 text-2xl font-bold text-slate-950">{trip.tripCode}</p>
+            <p className="mt-1 text-sm text-slate-600">
+              Cập nhật {formatApiDateTime(trip.currentStatusUpdatedAt)}
+            </p>
+          </div>
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-700 ring-1 ring-slate-200">
+            {tripStatusLabels[trip.currentStatus]}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <DriverTripInfo label="Xe" value={trip.vehicle?.plateNumber ?? 'Chưa gán xe'} />
+        <DriverTripInfo
+          label="Tài xế"
+          value={trip.driverProfile?.displayName ?? 'Chưa gán hồ sơ tài xế'}
+        />
+        <DriverTripInfo label="Cửa khẩu" value={trip.borderGate?.name ?? 'Chưa xác định'} />
+        <DriverTripInfo label="Bãi" value={trip.yard?.name ?? 'Chưa chọn bãi'} />
+        <DriverTripInfo label="Bắt đầu dự kiến" value={formatApiDateTime(trip.plannedStartAt)} />
+        <DriverTripInfo label="Đến dự kiến" value={formatApiDateTime(trip.plannedArrivalAt)} />
+      </div>
+
+      <div className="rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4">
+        <p className="text-sm font-bold text-slate-950">Tiến độ gần nhất</p>
+        <div className="mt-3 grid gap-2">
+          {trip.events && trip.events.length > 0 ? (
+            trip.events.slice(0, 5).map((event) => (
+              <div
+                key={`${event.eventType}-${event.occurredAt}`}
+                className="rounded-2xl bg-white px-4 py-3"
+              >
+                <p className="text-sm font-semibold text-slate-900">
+                  {tripEventTypeLabels[event.eventType] ?? event.eventType}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">{formatApiDateTime(event.occurredAt)}</p>
+              </div>
+            ))
+          ) : (
+            <p className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">
+              Chưa có sự kiện timeline nào được ghi nhận.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DriverTripInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-3xl border border-slate-100 bg-slate-50 px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <p className="mt-1 text-sm font-bold text-slate-950">{value}</p>
+    </div>
   );
 }
 

@@ -40,6 +40,7 @@ export class CuaKhauSoMapper {
   mapSummary(declaration: CuaKhauSoDeclarationLite): CuaKhauSoDeclarationSummary {
     const direction = this.mapDirection(declaration.type);
     const firstVehicle = declaration.mainVehicles?.[0];
+    const completed = this.isBusinessCompleted(declaration);
     const summary: CuaKhauSoDeclarationSummary = {
       externalId: this.nonEmpty(declaration.id, 'unknown'),
       declarationNumber: this.nonEmpty(declaration.numberOfDeclaration, 'Chưa có số tờ khai'),
@@ -60,7 +61,7 @@ export class CuaKhauSoMapper {
         'Chưa cập nhật'
       ),
       changePlateNumber: this.nonEmpty(declaration.licencePlateChange, 'Không sang tải'),
-      completed: Boolean(declaration.confirmFinish),
+      completed,
       paymentStatus: this.mapPaymentStatus(declaration.paymentOfTax)
     };
 
@@ -147,12 +148,13 @@ export class CuaKhauSoMapper {
     };
     const customsOfficeCode = this.trimToUndefined(detail.gate?.code);
     const submittedAt = this.toDate(detail.createDate);
-    const approvedAt = detail.confirmFinish
+    const approvedAt = this.isBusinessCompleted(detail)
       ? this.toDate(
           this.firstNonEmpty(
             detail.confirmFinishTime,
             detail.registrationTransportDetails?.[0]?.confirmOutVNTime,
-            detail.registrationTransportDetails?.[0]?.confirmOutTQTime
+            detail.registrationTransportDetails?.[0]?.confirmOutTQTime,
+            this.resolvePaymentTime(detail.paymentOfTax)
           )
         )
       : undefined;
@@ -203,7 +205,17 @@ export class CuaKhauSoMapper {
       {
         step: 6,
         label: procedureStepLabels[5],
-        done: Boolean(detail.confirmFinish)
+        done: Boolean(detail.confirmFinish),
+        status: detail.confirmFinish
+          ? 'DONE'
+          : this.isTaxPaid(detail.paymentOfTax)
+            ? 'WAITING_AUTHORITY'
+            : 'PENDING',
+        description: detail.confirmFinish
+          ? 'Cửa khẩu số đã xác nhận hoàn tất.'
+          : this.isTaxPaid(detail.paymentOfTax)
+            ? 'Thuế đã thanh toán, hồ sơ doanh nghiệp đã hoàn tất; đang chờ xác nhận công quyền.'
+            : 'Chưa có xác nhận rời cửa khẩu.'
       }
     ];
     const occurredAtValues = [
@@ -552,18 +564,16 @@ export class CuaKhauSoMapper {
     return 'OTHER';
   }
 
-  private mapDeclarationStatus(
-    declaration: Pick<CuaKhauSoDeclarationLite, 'confirmFinish'>
-  ): DeclarationStatus {
-    if (declaration.confirmFinish) {
+  private mapDeclarationStatus(declaration: CuaKhauSoDeclarationLite): DeclarationStatus {
+    if (this.isBusinessCompleted(declaration)) {
       return 'APPROVED';
     }
 
     return 'SUBMITTED';
   }
 
-  private mapStatusLabel(declaration: Pick<CuaKhauSoDeclarationLite, 'confirmFinish'>) {
-    return declaration.confirmFinish ? 'Hoàn thành' : 'Chưa hoàn thành';
+  private mapStatusLabel(declaration: CuaKhauSoDeclarationLite) {
+    return this.isBusinessCompleted(declaration) ? 'Hoàn thành' : 'Chưa hoàn thành';
   }
 
   private mapPaymentStatus(payment: CuaKhauSoPaymentInfo | null | undefined) {
@@ -576,6 +586,15 @@ export class CuaKhauSoMapper {
     }
 
     return 'Chưa thanh toán';
+  }
+
+
+  private isBusinessCompleted(declaration: CuaKhauSoDeclarationLite) {
+    return Boolean(declaration.confirmFinish || this.isTaxPaid(declaration.paymentOfTax));
+  }
+
+  private isTaxPaid(payment: CuaKhauSoPaymentInfo | null | undefined) {
+    return payment?.paymentStatus === 2;
   }
 
   private toIsoString(value: string | null | undefined): string | undefined {

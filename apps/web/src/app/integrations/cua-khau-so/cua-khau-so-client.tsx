@@ -5,7 +5,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { NoOrganizationState } from '@/components/no-organization-state';
-import { Button, SearchInput, SelectInput, TextInput } from '@/components/ui';
+import { Button, DateInput, SearchInput, SelectInput, TextInput } from '@/components/ui';
 import type {
   ApiCuaKhauSoDeclarationDetail,
   ApiCuaKhauSoDeclarationSummary,
@@ -32,8 +32,8 @@ const pageSizes: ApiCuaKhauSoPageSize[] = [10, 20, 50, 100];
 const statuses: Array<{ value: ''; label: string } | { value: ApiCuaKhauSoStatus; label: string }> =
   [
     { value: '', label: 'Tất cả trạng thái' },
-    { value: 1, label: 'Chưa hoàn thành' },
-    { value: 2, label: 'Hoàn thành' },
+    { value: 1, label: 'Chưa hoàn thành nghiệp vụ' },
+    { value: 2, label: 'Hoàn thành nghiệp vụ' },
     { value: 3, label: 'Đã hủy' }
   ];
 const directions: Array<
@@ -74,16 +74,19 @@ export function CuaKhauSoClient() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [keyword, setKeyword] = useState('');
-  const [status, setStatus] = useState<string>('');
+  const [status, setStatus] = useState<string>('1');
   const [direction, setDirection] = useState<string>('');
+  const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState<ApiCuaKhauSoPageSize>(20);
+  const [fromDate, setFromDate] = useState(getDefaultFromDateValue);
+  const [toDate, setToDate] = useState(getTodayDateValue);
   const [selectedExternalId, setSelectedExternalId] = useState<string>();
   const currentUser = data?.organization.currentUser;
   const canConnectIntegration = currentUser?.canConnectCuaKhauSoIntegration ?? false;
   const canSyncIntegration = currentUser?.canSyncCuaKhauSoIntegration ?? false;
   const filters = useMemo<ListCuaKhauSoDeclarationsParams>(() => {
     const nextFilters: ListCuaKhauSoDeclarationsParams = {
-      pageNumber: 1,
+      pageNumber,
       pageSize
     };
 
@@ -101,9 +104,18 @@ export function CuaKhauSoClient() {
       nextFilters.direction = direction;
     }
 
+    if (fromDate) {
+      nextFilters.from = toStartOfDayIso(fromDate);
+    }
+
+    if (toDate) {
+      nextFilters.to = toEndOfDayIso(toDate);
+    }
+
     return nextFilters;
-  }, [direction, keyword, pageSize, status]);
+  }, [direction, fromDate, keyword, pageNumber, pageSize, status, toDate]);
   const shellProps = data?.organization ? { organization: data.organization } : {};
+  const totalPage = data?.declarations.totalPage ?? 0;
 
   useEffect(() => {
     let isMounted = true;
@@ -142,6 +154,19 @@ export function CuaKhauSoClient() {
       isMounted = false;
     };
   }, [filters]);
+
+  useEffect(() => {
+    setPageNumber(1);
+    setSelectedExternalId(undefined);
+    setDetail(undefined);
+    setSyncResult(undefined);
+  }, [direction, fromDate, keyword, pageSize, status, toDate]);
+
+  useEffect(() => {
+    if (totalPage > 0 && pageNumber > totalPage) {
+      setPageNumber(totalPage);
+    }
+  }, [pageNumber, totalPage]);
 
   async function reload() {
     const result = await loadCuaKhauSoData(filters);
@@ -288,7 +313,7 @@ export function CuaKhauSoClient() {
                   {data?.declarations.message ?? 'Dữ liệu chỉ được đọc từ Cửa khẩu số.'}
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-4 xl:w-[42rem]">
+              <div className="grid gap-3 sm:grid-cols-2 xl:w-[54rem] xl:grid-cols-6">
                 <SearchInput
                   label="Tìm tờ khai"
                   wrapperClassName="sm:col-span-2"
@@ -314,9 +339,18 @@ export function CuaKhauSoClient() {
                   }))}
                   onChange={(event) => setDirection(event.target.value)}
                 />
+                <DateInput
+                  label="Từ ngày"
+                  value={fromDate}
+                  onChange={(event) => setFromDate(event.target.value)}
+                />
+                <DateInput
+                  label="Đến ngày"
+                  value={toDate}
+                  onChange={(event) => setToDate(event.target.value)}
+                />
                 <SelectInput
                   label="Số dòng"
-                  wrapperClassName="sm:col-start-4"
                   value={pageSize}
                   options={pageSizes.map((size) => ({
                     value: String(size),
@@ -327,6 +361,25 @@ export function CuaKhauSoClient() {
                   }
                 />
               </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+              <p>
+                Mặc định hiển thị tờ khai chưa hoàn thành nghiệp vụ trong 7 ngày gần nhất. Tờ khai
+                đã thanh toán Thuế được xem là hoàn thành nghiệp vụ.
+              </p>
+              <Button
+                type="button"
+                variant="soft"
+                onClick={() => {
+                  setStatus('1');
+                  setFromDate(getDefaultFromDateValue());
+                  setToDate(getTodayDateValue());
+                  setKeyword('');
+                  setDirection('');
+                }}
+              >
+                Về bộ lọc mặc định
+              </Button>
             </div>
 
             {isLoading ? <StatePanel message="Đang tải tờ khai từ API GateSync..." /> : null}
@@ -339,21 +392,30 @@ export function CuaKhauSoClient() {
               <StatePanel message="Không tìm thấy tờ khai phù hợp với bộ lọc hiện tại." />
             ) : null}
             {!isLoading && data && data.declarations.declarations.length > 0 ? (
-              <div className="mt-5 grid gap-3 xl:grid-cols-[1fr_26rem]">
-                <DeclarationList
-                  declarations={data.declarations.declarations}
-                  selectedExternalId={selectedExternalId}
-                  onSelect={openDetail}
+              <>
+                <div className="mt-5 grid gap-3 xl:grid-cols-[1fr_26rem]">
+                  <DeclarationList
+                    declarations={data.declarations.declarations}
+                    selectedExternalId={selectedExternalId}
+                    onSelect={openDetail}
+                  />
+                  <DeclarationDetailPanel
+                    detail={detail}
+                    isLoading={isDetailLoading}
+                    isSyncing={isSyncing}
+                    canSync={canSyncIntegration}
+                    syncResult={syncResult}
+                    onSync={() => void syncSelectedDeclaration()}
+                  />
+                </div>
+                <PaginationControls
+                  pageNumber={pageNumber}
+                  totalPage={totalPage}
+                  totalCount={data.declarations.totalCount}
+                  onPrevious={() => setPageNumber((current) => Math.max(1, current - 1))}
+                  onNext={() => setPageNumber((current) => current + 1)}
                 />
-                <DeclarationDetailPanel
-                  detail={detail}
-                  isLoading={isDetailLoading}
-                  isSyncing={isSyncing}
-                  canSync={canSyncIntegration}
-                  syncResult={syncResult}
-                  onSync={() => void syncSelectedDeclaration()}
-                />
-              </div>
+              </>
             ) : null}
           </section>
 
@@ -364,23 +426,24 @@ export function CuaKhauSoClient() {
                   Tự động đồng bộ
                 </p>
                 <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                  Polling Cửa khẩu số cấp tổ chức
+                  Auto-sync đang chạy mặc định
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                  Worker backend dùng credential đã mã hóa để đọc danh sách/chi tiết tờ khai, tạo sự
-                  kiện timeline idempotent cho sang tải, vào bãi, thông quan và giải phóng xe. Không
-                  có thao tác ghi ngược lên hệ thống nguồn.
+                  Worker backend dùng credential đã mã hóa để tự đọc các tờ khai chưa hoàn thành
+                  trong 7 ngày gần nhất, tạo sự kiện timeline idempotent và tự liên kết xe/tài xế
+                  khi khớp hồ sơ nội bộ. Không có thao tác ghi ngược lên hệ thống nguồn.
                 </p>
               </div>
               <Button
                 type="button"
+                variant="secondary"
                 disabled={!canSyncIntegration || isRunningSyncNow || !data?.session.authenticated}
                 onClick={() => void runManualAutoSync()}
               >
                 {canSyncIntegration
                   ? isRunningSyncNow
                     ? 'Đang chạy...'
-                    : 'Chạy đồng bộ ngay'
+                    : 'Chạy lại khi cần'
                   : 'Không có quyền đồng bộ'}
               </Button>
             </div>
@@ -550,12 +613,49 @@ function DeclarationList({
   );
 }
 
+function PaginationControls({
+  pageNumber,
+  totalPage,
+  totalCount,
+  onPrevious,
+  onNext
+}: {
+  pageNumber: number;
+  totalPage: number;
+  totalCount: number;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-100 bg-white px-4 py-3 text-sm text-slate-600">
+      <p>
+        Trang <span className="font-bold text-slate-950">{pageNumber}</span> /{' '}
+        <span className="font-bold text-slate-950">{Math.max(totalPage, 1)}</span> · {totalCount} tờ
+        khai sau lọc.
+      </p>
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="secondary" disabled={pageNumber <= 1} onClick={onPrevious}>
+          Trang trước
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={totalPage === 0 || pageNumber >= totalPage}
+          onClick={onNext}
+        >
+          Trang sau
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function SyncRunList({ syncRuns }: { syncRuns: ApiIntegrationSyncRun[] }) {
   if (syncRuns.length === 0) {
     return (
       <p className="mt-4 rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-5 py-5 text-sm text-slate-600">
-        Chưa có lịch sử chạy đồng bộ. Khi worker hoặc nút “Chạy đồng bộ ngay” hoạt động, các lần
-        chạy sẽ hiển thị tại đây.
+        Chưa có lịch sử chạy đồng bộ. Khi worker hoặc nút “Chạy lại khi cần” hoạt động, các lần chạy
+        sẽ hiển thị tại đây.
       </p>
     );
   }
@@ -658,13 +758,24 @@ function DeclarationDetailPanel({
                   {step.step}. {step.label}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">{formatApiDateTime(step.occurredAt)}</p>
+                {step.description ? (
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{step.description}</p>
+                ) : null}
               </div>
               <span
                 className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  step.done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                  step.done
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : step.status === 'WAITING_AUTHORITY'
+                      ? 'bg-sky-100 text-sky-700'
+                      : 'bg-slate-100 text-slate-600'
                 }`}
               >
-                {step.done ? 'Đã xong' : 'Chưa có dữ liệu'}
+                {step.done
+                  ? 'Đã xong'
+                  : step.status === 'WAITING_AUTHORITY'
+                    ? 'Chờ xác nhận'
+                    : 'Chưa có dữ liệu'}
               </span>
             </div>
           ))}
@@ -783,6 +894,31 @@ function parseCuaKhauSoStatus(value: string): ApiCuaKhauSoStatus | undefined {
 
 function isCuaKhauSoDirection(value: string): value is ApiCuaKhauSoDirection {
   return value === 'IMPORT' || value === 'EXPORT';
+}
+
+function getDefaultFromDateValue() {
+  const date = new Date();
+  date.setDate(date.getDate() - 7);
+  return toDateInputValue(date);
+}
+
+function getTodayDateValue() {
+  return toDateInputValue(new Date());
+}
+
+function toStartOfDayIso(value: string) {
+  return new Date(`${value}T00:00:00.000`).toISOString();
+}
+
+function toEndOfDayIso(value: string) {
+  return new Date(`${value}T23:59:59.999`).toISOString();
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function formatMoney(value: number) {

@@ -300,6 +300,8 @@ export type ListCuaKhauSoDeclarationsParams = {
   status?: ApiCuaKhauSoStatus;
   keyword?: string;
   direction?: ApiCuaKhauSoDirection;
+  from?: string;
+  to?: string;
 };
 
 export type ApiCuaKhauSoProcedureStep = {
@@ -307,6 +309,8 @@ export type ApiCuaKhauSoProcedureStep = {
   label: string;
   done: boolean;
   occurredAt?: string;
+  status?: 'DONE' | 'WAITING_AUTHORITY' | 'PENDING';
+  description?: string;
 };
 
 export type ApiCuaKhauSoDeclarationSummary = {

@@ -25,11 +25,24 @@ import { CuaKhauSoSessionStore } from './cua-khau-so-session.store';
 import type { CuaKhauSoLoginDto } from './dto/cua-khau-so-login.dto';
 import type { ListCuaKhauSoDeclarationsQueryDto } from './dto/list-cua-khau-so-declarations-query.dto';
 import type { SyncCuaKhauSoDeclarationDto } from './dto/sync-cua-khau-so-declaration.dto';
+import type {
+  CuaKhauSoDeclarationDetail,
+  CuaKhauSoDeclarationSummary,
+  CuaKhauSoListStatus,
+  CuaKhauSoPageSize
+} from './cua-khau-so.types';
 
 type LinkedTrip = {
   id: string;
   tripCode: string;
   customsDeclarationId: string | null;
+  vehicleId: string | null;
+  driverProfileId: string | null;
+};
+type TripSourceAssignment = {
+  vehicleId?: string;
+  driverProfileId?: string;
+  driverUserId?: string | null;
 };
 type LinkMode = 'requested' | 'declaration' | 'tripCode' | 'created' | 'none';
 type CustomsDeclarationSyncData = {
@@ -61,6 +74,8 @@ type PrismaWithIntegrationSyncRun = PrismaService & {
 
 const integrationDisplayName = 'Cửa khẩu số';
 const localCredentialSecret = 'gatesync-local-development-secret';
+const defaultRecentWindowDays = 7;
+const filteredListPageSize: CuaKhauSoPageSize = 100;
 
 @Injectable()
 export class CuaKhauSoService {
@@ -148,9 +163,9 @@ export class CuaKhauSoService {
     query: ListCuaKhauSoDeclarationsQueryDto
   ) {
     const session = await this.getSourceSession(user, organizationId);
-    const response = await this.client.getDeclarations(session, query.toExternalParams());
+    const result = await this.fetchFilteredDeclarationList(session, query);
     this.sessionStore.touch(organizationId, user.id, session);
-    return this.mapper.mapListResponse(response);
+    return result;
   }
 
   async getDeclaration(user: RequestUser, organizationId: string, externalId: string) {
@@ -348,6 +363,7 @@ export class CuaKhauSoService {
           ...declarationWriteData.create
         }
       });
+      const assignment = await this.resolveTripSourceAssignment(tx, organizationId, detail);
       const linked = await this.resolveLinkedTrip(
         tx,
         user,
@@ -357,20 +373,13 @@ export class CuaKhauSoService {
           declarationNumber: declaration.declarationNumber
         },
         normalizedDeclaration,
+        assignment,
         syncedAt,
         requestedTripId
       );
-
-      if (linked.trip && linked.trip.customsDeclarationId !== declaration.id) {
-        await tx.trip.update({
-          where: {
-            id: linked.trip.id
-          },
-          data: {
-            customsDeclarationId: declaration.id
-          }
-        });
-      }
+      const linkedTrip = linked.trip
+        ? await this.applyTripSourceAssignment(tx, linked.trip, declaration.id, assignment)
+        : undefined;
 
       await tx.integrationAccount.update({
         where: {
@@ -392,7 +401,7 @@ export class CuaKhauSoService {
           after: {
             externalId,
             declarationNumber: declaration.declarationNumber,
-            linkedTripId: linked.trip?.id,
+            linkedTripId: linkedTrip?.id,
             linkedBy: linked.linkedBy
           }
         }
@@ -400,7 +409,7 @@ export class CuaKhauSoService {
 
       return {
         declaration,
-        linkedTrip: linked.trip,
+        linkedTrip,
         linkedBy: linked.linkedBy
       };
     });
@@ -469,6 +478,71 @@ export class CuaKhauSoService {
       recordedEvents,
       skippedEvents,
       lastSyncAt: syncedAt.toISOString()
+    };
+  }
+
+  private async fetchFilteredDeclarationList(
+    session: ReturnType<CuaKhauSoService['withSessionExpiry']>,
+    query: ListCuaKhauSoDeclarationsQueryDto
+  ) {
+    const pageNumber = query.pageNumber ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const from =
+      this.parseDate(query.from) ??
+      (!query.to && !query.keyword && (!query.status || query.status === 1)
+        ? this.getDefaultRecentFromDate()
+        : undefined);
+    const to = this.parseDate(query.to);
+
+    if (from && to && from > to) {
+      throw new BadRequestException('From date must be before to date.');
+    }
+
+    const maxPages = Math.max(
+      pageNumber,
+      this.configService.get<number>('CUA_KHAU_SO_LIST_MAX_PAGES') ?? 10
+    );
+    const externalStatus = this.toExternalListStatus(query.status);
+    const filtered: CuaKhauSoDeclarationSummary[] = [];
+    let sourceMessage = 'Đã tải dữ liệu Cửa khẩu số.';
+
+    for (let sourcePage = 1; sourcePage <= maxPages; sourcePage += 1) {
+      const response = await this.client.getDeclarations(session, {
+        pageNumber: sourcePage,
+        pageSize: filteredListPageSize,
+        ...(externalStatus ? { status: externalStatus } : {}),
+        ...(query.keyword ? { keyword: query.keyword.trim() } : {}),
+        ...(query.direction ? { direction: query.direction } : {})
+      });
+      const mapped = this.mapper.mapListResponse(response);
+      sourceMessage = mapped.message;
+
+      if (mapped.declarations.length === 0) {
+        break;
+      }
+
+      filtered.push(
+        ...mapped.declarations.filter((declaration) =>
+          this.matchesDeclarationListFilters(declaration, query, from, to)
+        )
+      );
+
+      if (
+        this.shouldStopScanningByFromDate(mapped.declarations, from) ||
+        mapped.totalPage <= sourcePage
+      ) {
+        break;
+      }
+    }
+
+    const startIndex = (pageNumber - 1) * pageSize;
+    const totalPage = filtered.length > 0 ? Math.ceil(filtered.length / pageSize) : 0;
+
+    return {
+      declarations: filtered.slice(startIndex, startIndex + pageSize),
+      totalCount: filtered.length,
+      totalPage,
+      message: this.buildFilteredListMessage(sourceMessage, from, to, query.status)
     };
   }
 
@@ -576,8 +650,9 @@ export class CuaKhauSoService {
 
     const credentials = this.decryptCredentials(account.encryptedCredentials);
     const sourceSession = this.withSessionExpiry(await this.client.login(credentials));
-    const pageSize = 50;
+    const pageSize = 50 as CuaKhauSoPageSize;
     const maxPages = Math.max(1, this.configService.get<number>('CUA_KHAU_SO_POLL_MAX_PAGES') ?? 3);
+    const from = this.getDefaultRecentFromDate();
     let recordsFetched = 0;
     let detailsFetched = 0;
     let eventsCreated = 0;
@@ -588,16 +663,20 @@ export class CuaKhauSoService {
     for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
       const response = await this.client.getDeclarations(sourceSession, {
         pageNumber,
-        pageSize
+        pageSize,
+        status: 1
       });
       const mapped = this.mapper.mapListResponse(response);
+      const declarationsInWindow = mapped.declarations.filter((declaration) =>
+        this.matchesAutoSyncWindow(declaration, from)
+      );
       recordsFetched += mapped.declarations.length;
 
       if (mapped.declarations.length === 0) {
         break;
       }
 
-      for (const declaration of mapped.declarations) {
+      for (const declaration of declarationsInWindow) {
         try {
           const detailResponse = await this.client.getDeclarationDetail(
             sourceSession,
@@ -626,7 +705,10 @@ export class CuaKhauSoService {
         }
       }
 
-      if (mapped.totalPage <= pageNumber) {
+      if (
+        this.shouldStopScanningByFromDate(mapped.declarations, from) ||
+        mapped.totalPage <= pageNumber
+      ) {
         break;
       }
     }
@@ -647,6 +729,7 @@ export class CuaKhauSoService {
     organizationId: string,
     declaration: { id: string; declarationNumber: string },
     normalizedDeclaration: CustomsDeclarationSyncData,
+    assignment: TripSourceAssignment,
     syncedAt: Date,
     requestedTripId?: string
   ): Promise<{ trip?: LinkedTrip; linkedBy: LinkMode }> {
@@ -660,7 +743,9 @@ export class CuaKhauSoService {
         select: {
           id: true,
           tripCode: true,
-          customsDeclarationId: true
+          customsDeclarationId: true,
+          vehicleId: true,
+          driverProfileId: true
         }
       });
 
@@ -683,7 +768,9 @@ export class CuaKhauSoService {
       select: {
         id: true,
         tripCode: true,
-        customsDeclarationId: true
+        customsDeclarationId: true,
+        vehicleId: true,
+        driverProfileId: true
       }
     });
 
@@ -711,7 +798,9 @@ export class CuaKhauSoService {
       select: {
         id: true,
         tripCode: true,
-        customsDeclarationId: true
+        customsDeclarationId: true,
+        vehicleId: true,
+        driverProfileId: true
       }
     });
 
@@ -722,6 +811,7 @@ export class CuaKhauSoService {
         organizationId,
         declaration.id,
         normalizedDeclaration,
+        assignment,
         syncedAt
       );
 
@@ -743,6 +833,7 @@ export class CuaKhauSoService {
     organizationId: string,
     declarationId: string,
     normalizedDeclaration: CustomsDeclarationSyncData,
+    assignment: TripSourceAssignment,
     syncedAt: Date
   ): Promise<LinkedTrip> {
     const tripCreateData: Prisma.TripUncheckedCreateInput = {
@@ -763,12 +854,22 @@ export class CuaKhauSoService {
       tripCreateData.plannedStartAt = normalizedDeclaration.submittedAt;
     }
 
+    if (assignment.vehicleId) {
+      tripCreateData.vehicleId = assignment.vehicleId;
+    }
+
+    if (assignment.driverProfileId) {
+      tripCreateData.driverProfileId = assignment.driverProfileId;
+    }
+
     const trip = await prisma.trip.create({
       data: tripCreateData,
       select: {
         id: true,
         tripCode: true,
-        customsDeclarationId: true
+        customsDeclarationId: true,
+        vehicleId: true,
+        driverProfileId: true
       }
     });
 
@@ -780,6 +881,17 @@ export class CuaKhauSoService {
         visibilityLevel: 'FULL'
       }
     });
+
+    if (assignment.driverUserId) {
+      await prisma.tripParticipant.create({
+        data: {
+          tripId: trip.id,
+          userId: assignment.driverUserId,
+          role: 'DRIVER',
+          visibilityLevel: 'OPERATIONAL'
+        }
+      });
+    }
 
     await prisma.tripEvent.create({
       data: {
@@ -809,6 +921,245 @@ export class CuaKhauSoService {
     });
 
     return trip;
+  }
+
+  private async resolveTripSourceAssignment(
+    prisma: Prisma.TransactionClient,
+    organizationId: string,
+    detail: CuaKhauSoDeclarationDetail
+  ): Promise<TripSourceAssignment> {
+    const plateCandidates = this.resolvePlateCandidates(detail);
+
+    if (plateCandidates.length === 0) {
+      return {};
+    }
+
+    const vehicle = await prisma.vehicle.findFirst({
+      where: {
+        organizationId,
+        deletedAt: null,
+        OR: plateCandidates.map((plateNumber) => ({ plateNumber }))
+      },
+      select: {
+        id: true,
+        defaultDriverId: true,
+        defaultDriver: {
+          select: {
+            userId: true
+          }
+        }
+      }
+    });
+
+    if (!vehicle) {
+      return {};
+    }
+
+    return {
+      vehicleId: vehicle.id,
+      ...(vehicle.defaultDriverId ? { driverProfileId: vehicle.defaultDriverId } : {}),
+      driverUserId: vehicle.defaultDriver?.userId ?? null
+    };
+  }
+
+  private async applyTripSourceAssignment(
+    prisma: Prisma.TransactionClient,
+    trip: LinkedTrip,
+    declarationId: string,
+    assignment: TripSourceAssignment
+  ): Promise<LinkedTrip> {
+    const data: Prisma.TripUncheckedUpdateInput = {};
+
+    if (trip.customsDeclarationId !== declarationId) {
+      data.customsDeclarationId = declarationId;
+    }
+
+    if (!trip.vehicleId && assignment.vehicleId) {
+      data.vehicleId = assignment.vehicleId;
+    }
+
+    if (!trip.driverProfileId && assignment.driverProfileId) {
+      data.driverProfileId = assignment.driverProfileId;
+    }
+
+    const updatedTrip =
+      Object.keys(data).length > 0
+        ? await prisma.trip.update({
+            where: {
+              id: trip.id
+            },
+            data,
+            select: {
+              id: true,
+              tripCode: true,
+              customsDeclarationId: true,
+              vehicleId: true,
+              driverProfileId: true
+            }
+          })
+        : trip;
+
+    if (assignment.driverUserId) {
+      const existingDriverParticipant = await prisma.tripParticipant.findFirst({
+        where: {
+          tripId: updatedTrip.id,
+          userId: assignment.driverUserId,
+          role: 'DRIVER'
+        },
+        select: {
+          id: true
+        }
+      });
+
+      if (!existingDriverParticipant) {
+        await prisma.tripParticipant.create({
+          data: {
+            tripId: updatedTrip.id,
+            userId: assignment.driverUserId,
+            role: 'DRIVER',
+            visibilityLevel: 'OPERATIONAL'
+          }
+        });
+      }
+    }
+
+    return updatedTrip;
+  }
+
+  private resolvePlateCandidates(detail: CuaKhauSoDeclarationDetail) {
+    const rawValues = [
+      detail.licencePlateChange,
+      detail.licencePlateVNTQ,
+      ...(detail.changeVehicle?.changeVehicleDetails ?? []).flatMap((vehicle) => [
+        vehicle.licencePlateChange,
+        vehicle.licencePlate
+      ]),
+      ...(detail.changeVehicles ?? []).map((vehicle) => vehicle.licencePlate),
+      ...(detail.registrationTransportDetails ?? []).map((vehicle) => vehicle.licencePlate),
+      ...(detail.mainVehicles ?? []).map((vehicle) => vehicle.licencePlate)
+    ];
+    const candidates = new Set<string>();
+
+    rawValues.forEach((value) => {
+      const normalized = this.normalizePlateNumber(value);
+
+      if (normalized) {
+        candidates.add(normalized);
+      }
+
+      const compact = normalized?.replace(/-/g, '');
+
+      if (compact) {
+        candidates.add(compact);
+      }
+    });
+
+    return [...candidates];
+  }
+
+  private normalizePlateNumber(value: string | null | undefined) {
+    return value?.trim().replace(/\s+/g, '').toUpperCase() || undefined;
+  }
+
+  private matchesDeclarationListFilters(
+    declaration: CuaKhauSoDeclarationSummary,
+    query: ListCuaKhauSoDeclarationsQueryDto,
+    from: Date | undefined,
+    to: Date | undefined
+  ) {
+    if (query.status === 1 && declaration.completed) {
+      return false;
+    }
+
+    if (query.status === 2 && !declaration.completed) {
+      return false;
+    }
+
+    return this.isWithinDateWindow(declaration, from, to);
+  }
+
+  private matchesAutoSyncWindow(declaration: CuaKhauSoDeclarationSummary, from: Date) {
+    return this.isWithinDateWindow(declaration, from, undefined);
+  }
+
+  private isWithinDateWindow(
+    declaration: CuaKhauSoDeclarationSummary,
+    from: Date | undefined,
+    to: Date | undefined
+  ) {
+    const createdAt = this.parseDate(declaration.createdAt);
+
+    if (!createdAt) {
+      return true;
+    }
+
+    if (from && createdAt < from) {
+      return false;
+    }
+
+    if (to && createdAt > to) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private shouldStopScanningByFromDate(
+    declarations: CuaKhauSoDeclarationSummary[],
+    from: Date | undefined
+  ) {
+    if (!from || declarations.length === 0) {
+      return false;
+    }
+
+    return declarations.every((declaration) => {
+      const createdAt = this.parseDate(declaration.createdAt);
+      return createdAt ? createdAt < from : false;
+    });
+  }
+
+  private toExternalListStatus(status: CuaKhauSoListStatus | undefined) {
+    return status === 2 ? undefined : status;
+  }
+
+  private buildFilteredListMessage(
+    sourceMessage: string,
+    from: Date | undefined,
+    to: Date | undefined,
+    status: CuaKhauSoListStatus | undefined
+  ) {
+    const statusMessage =
+      status === 1
+        ? 'Đang ẩn các chuyến đã hoàn thành nghiệp vụ.'
+        : status === 2
+          ? 'Đang hiển thị các chuyến đã hoàn thành nghiệp vụ.'
+          : 'Đang hiển thị theo bộ lọc hiện tại.';
+    const rangeMessage =
+      from || to
+        ? `Khoảng ngày: ${from ? from.toISOString().slice(0, 10) : 'đầu'} - ${
+            to ? to.toISOString().slice(0, 10) : 'nay'
+          }.`
+        : 'Không giới hạn khoảng ngày.';
+
+    return `${sourceMessage} ${statusMessage} ${rangeMessage}`;
+  }
+
+  private getDefaultRecentFromDate() {
+    return new Date(Date.now() - defaultRecentWindowDays * 24 * 60 * 60 * 1000);
+  }
+
+  private parseDate(value: string | null | undefined) {
+    if (!value) {
+      return undefined;
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return undefined;
+    }
+
+    return date;
   }
 
   private encryptCredentials(credentials: StoredCuaKhauSoCredentials) {
