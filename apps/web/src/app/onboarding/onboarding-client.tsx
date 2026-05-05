@@ -8,9 +8,10 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { FormEvent } from 'react';
+import type { FormEvent, HTMLInputTypeAttribute } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { SignOutButton } from '@/components/sign-out-button';
+import { Button, SelectInput, TextInput } from '@/components/ui';
 import type { ApiOrganization, CreateOrganizationPayload } from '@/lib/api/types';
 import { resolveWebApiSession } from '@/lib/api/session';
 import { gatesyncApi } from '@/lib/api/gatesync';
@@ -230,8 +231,8 @@ export function OnboardingClient() {
   }
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-7xl px-4 py-5 sm:px-8 lg:px-12">
-      <header className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white/95 px-4 py-3 shadow-soft backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+    <main className="mx-auto min-h-screen w-full max-w-7xl px-3 py-4 sm:px-6 lg:px-10">
+      <header className="sticky top-3 z-20 flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white/95 px-4 py-3 shadow-soft backdrop-blur sm:flex-row sm:items-center sm:justify-between">
         <Link href="/" className="flex items-center gap-3">
           <Image
             src="/gs-logo.png"
@@ -257,12 +258,12 @@ export function OnboardingClient() {
         </div>
       </header>
 
-      <section className="grid gap-6 py-6 lg:grid-cols-[0.9fr_1.1fr] lg:py-8">
-        <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-5 shadow-soft sm:p-6">
+      <section className="grid gap-4 py-4 lg:grid-cols-[0.9fr_1.1fr] lg:py-6">
+        <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
             Onboarding doanh nghiệp
           </p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-5xl">
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-4xl">
             Chọn đường vào phù hợp trước khi mở dữ liệu vận hành.
           </h1>
           <p className="mt-4 text-sm leading-6 text-slate-600 sm:text-base">
@@ -270,7 +271,7 @@ export function OnboardingClient() {
             liệu. Doanh nghiệp tạo tổ chức; tài xế và chủ hàng cần lời mời hoặc liên kết từ tổ chức.
           </p>
 
-          <div className="mt-6 grid gap-3">
+          <div className="mt-4 grid gap-3">
             {profileOptions.map((option) => {
               const isSelected = option.value === selectedProfile;
 
@@ -550,32 +551,23 @@ function OrganizationForm({
           placeholder="Công ty Logistics Hữu Nghị"
           onChange={(name) => onChange({ ...value, name })}
         />
-        <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Loại tổ chức
-          </span>
-          <select
-            className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-            value={value.type}
-            onChange={(event) =>
-              onChange({ ...value, type: event.target.value as OrganizationType })
-            }
-          >
-            {(
-              [
-                'LOGISTICS_COMPANY',
-                'TRANSPORT_COMPANY',
-                'CUSTOMS_AGENT',
-                'YARD_OPERATOR',
-                'OTHER'
-              ] satisfies OrganizationType[]
-            ).map((type) => (
-              <option key={type} value={type}>
-                {organizationTypeLabels[type]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SelectInput
+          label="Loại tổ chức"
+          value={value.type}
+          options={(
+            [
+              'LOGISTICS_COMPANY',
+              'TRANSPORT_COMPANY',
+              'CUSTOMS_AGENT',
+              'YARD_OPERATOR',
+              'OTHER'
+            ] satisfies OrganizationType[]
+          ).map((type) => ({
+            value: type,
+            label: organizationTypeLabels[type]
+          }))}
+          onChange={(event) => onChange({ ...value, type: event.target.value as OrganizationType })}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <InputField
             label="Mã số thuế"
@@ -603,13 +595,9 @@ function OrganizationForm({
           placeholder="Lạng Sơn, Việt Nam"
           onChange={(address) => onChange({ ...value, address })}
         />
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-soft transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-        >
+        <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Đang tạo tổ chức...' : 'Tạo tổ chức và xem checklist'}
-        </button>
+        </Button>
       </form>
     </section>
   );
@@ -645,12 +633,9 @@ function InviteOnlyForm({
           placeholder="GS-INVITE-..."
           onChange={onInviteCodeChange}
         />
-        <button
-          disabled={isSubmitting}
-          className="min-h-12 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-        >
+        <Button type="submit" variant="secondary" disabled={isSubmitting}>
           {isSubmitting ? 'Đang kích hoạt...' : 'Kích hoạt mã mời'}
-        </button>
+        </Button>
       </form>
       <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
         GateSync chưa cho tài xế hoặc chủ hàng tự claim dữ liệu tổ chức. Quản trị viên vẫn là người
@@ -670,22 +655,17 @@ function InputField({
   label: string;
   value: string;
   placeholder: string;
-  type?: string;
+  type?: HTMLInputTypeAttribute;
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-        {label}
-      </span>
-      <input
-        className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
+    <TextInput
+      label={label}
+      type={type}
+      value={value}
+      placeholder={placeholder}
+      onChange={(event) => onChange(event.target.value)}
+    />
   );
 }
 

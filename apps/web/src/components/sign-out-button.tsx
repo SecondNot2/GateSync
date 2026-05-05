@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { clearWebApiSessionCache } from '@/lib/api/session';
 
 type SignOutButtonProps = {
   className?: string;
@@ -33,9 +34,11 @@ export function SignOutButton({
       });
       const result = (await response.json().catch(() => ({}))) as SignOutResponse;
 
+      clearWebApiSessionCache();
       router.replace(result.redirectTo ?? '/login?reason=signed_out');
       router.refresh();
     } catch {
+      clearWebApiSessionCache();
       router.replace('/login?reason=signed_out');
       router.refresh();
     } finally {

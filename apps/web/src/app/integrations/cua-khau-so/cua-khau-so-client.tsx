@@ -5,6 +5,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { NoOrganizationState } from '@/components/no-organization-state';
+import { Button, SearchInput, SelectInput, TextInput } from '@/components/ui';
 import type {
   ApiCuaKhauSoDeclarationDetail,
   ApiCuaKhauSoDeclarationSummary,
@@ -246,112 +247,6 @@ export function CuaKhauSoClient() {
 
       {!organizationIssue ? (
         <>
-          <section className="grid gap-5 xl:grid-cols-[1fr_24rem]">
-            <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                    Kết nối nguồn
-                  </p>
-                  <h2 className="mt-2 text-2xl font-bold text-slate-950">Phiên đọc Cửa khẩu số</h2>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                    GateSync chỉ gọi các endpoint đọc danh sách, chi tiết và bước thủ tục. Không có
-                    thao tác thêm, sửa hoặc xóa dữ liệu trên hệ thống nguồn.
-                  </p>
-                  <div className="mt-4 rounded-3xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-900">
-                    <p>
-                      Bạn đang kết nối nguồn dữ liệu cho tổ chức{' '}
-                      <span className="font-bold">
-                        {data?.organization.name ?? 'đang xác định'}
-                      </span>
-                      .
-                    </p>
-                    <p className="mt-1">
-                      Vai trò hiện tại:{' '}
-                      <span className="font-bold">
-                        {currentUser ? membershipRoleLabels[currentUser.role] : 'đang kiểm tra'}
-                      </span>
-                      . Được phép kết nối: {cuaKhauSoConnectorRoleLabels}. Được phép đồng bộ:{' '}
-                      {cuaKhauSoSyncRoleLabels}.
-                    </p>
-                  </div>
-                </div>
-                <ReadOnlyBadge />
-              </div>
-
-              <form
-                onSubmit={submitLogin}
-                className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end"
-              >
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Tài khoản Cửa khẩu số
-                  </span>
-                  <input
-                    className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                    placeholder="Tên đăng nhập được ủy quyền đọc"
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Mật khẩu
-                  </span>
-                  <input
-                    className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                    placeholder="Không lưu ở trình duyệt"
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                  />
-                </label>
-                <button
-                  className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  disabled={
-                    isLoading ||
-                    isConnecting ||
-                    !username.trim() ||
-                    !password ||
-                    !canConnectIntegration
-                  }
-                >
-                  {isLoading
-                    ? 'Đang kiểm tra quyền...'
-                    : canConnectIntegration
-                      ? isConnecting
-                        ? 'Đang kết nối...'
-                        : 'Kết nối chỉ đọc'
-                      : 'Không có quyền kết nối'}
-                </button>
-              </form>
-              {!isLoading && !canConnectIntegration ? (
-                <p className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  Chỉ các vai trò được phân quyền tích hợp mới có thể tạo phiên đọc Cửa khẩu số. API
-                  vẫn kiểm tra quyền trước khi nhận thông tin đăng nhập nguồn.
-                </p>
-              ) : null}
-            </div>
-
-            <div className="rounded-[1.75rem] border border-emerald-100 bg-emerald-50 p-4 shadow-soft sm:p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                Trạng thái an toàn
-              </p>
-              <p className="mt-2 text-2xl font-bold text-slate-950">
-                {data?.session.authenticated ? 'Đã có phiên đọc' : 'Chưa kết nối'}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-slate-700">
-                {data?.session.authenticated
-                  ? `Tài khoản: ${data.session.username ?? 'không hiển thị'} · Hết hạn: ${formatApiDateTime(data.session.expiresAt)}`
-                  : 'Đăng nhập để backend giữ phiên nguồn. Browser không nhận token hoặc raw payload nguồn.'}
-              </p>
-              <p className="mt-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm leading-6 text-emerald-800">
-                Credential nguồn chỉ gửi qua API GateSync sau auth + RBAC. Token phiên Cửa khẩu số
-                được giữ ở backend và không được trả về frontend.
-              </p>
-            </div>
-          </section>
-
           <section className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
               <div>
@@ -368,47 +263,43 @@ export function CuaKhauSoClient() {
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-4 xl:w-[42rem]">
-                <input
-                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100 sm:col-span-2"
-                  placeholder="Tìm biển số, số mooc, số tờ khai"
+                <SearchInput
+                  label="Tìm tờ khai"
+                  wrapperClassName="sm:col-span-2"
+                  placeholder="Biển số, số mooc, số tờ khai"
                   value={keyword}
                   onChange={(event) => setKeyword(event.target.value)}
                 />
-                <select
-                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                <SelectInput
+                  label="Trạng thái"
                   value={status}
+                  options={statuses.map((item) => ({
+                    value: String(item.value),
+                    label: item.label
+                  }))}
                   onChange={(event) => setStatus(event.target.value)}
-                >
-                  {statuses.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                />
+                <SelectInput
+                  label="Luồng"
                   value={direction}
+                  options={directions.map((item) => ({
+                    value: item.value,
+                    label: item.label
+                  }))}
                   onChange={(event) => setDirection(event.target.value)}
-                >
-                  {directions.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 sm:col-start-4"
+                />
+                <SelectInput
+                  label="Số dòng"
+                  wrapperClassName="sm:col-start-4"
                   value={pageSize}
+                  options={pageSizes.map((size) => ({
+                    value: String(size),
+                    label: `${size} dòng`
+                  }))}
                   onChange={(event) =>
                     setPageSize(Number(event.target.value) as ApiCuaKhauSoPageSize)
                   }
-                >
-                  {pageSizes.map((size) => (
-                    <option key={size} value={size}>
-                      {size} dòng
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             </div>
 
@@ -438,6 +329,108 @@ export function CuaKhauSoClient() {
                 />
               </div>
             ) : null}
+          </section>
+
+          <section className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-3 shadow-soft sm:p-4">
+            <details>
+              <summary className="flex cursor-pointer list-none flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                    Kết nối nguồn
+                  </p>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950">Phiên đọc Cửa khẩu số</h2>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <ReadOnlyBadge />
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                    {data?.session.authenticated ? 'Đã có phiên đọc' : 'Chưa kết nối'}
+                  </span>
+                </div>
+              </summary>
+
+              <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_22rem]">
+                <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
+                  <p className="text-sm leading-6 text-slate-600">
+                    GateSync chỉ gọi các endpoint đọc danh sách, chi tiết và bước thủ tục. Không có
+                    thao tác thêm, sửa hoặc xóa dữ liệu trên hệ thống nguồn.
+                  </p>
+                  <div className="mt-3 rounded-3xl border border-sky-100 bg-white px-4 py-3 text-sm leading-6 text-sky-900">
+                    <p>
+                      Tổ chức:{' '}
+                      <span className="font-bold">
+                        {data?.organization.name ?? 'đang xác định'}
+                      </span>
+                    </p>
+                    <p className="mt-1">
+                      Vai trò hiện tại:{' '}
+                      <span className="font-bold">
+                        {currentUser ? membershipRoleLabels[currentUser.role] : 'đang kiểm tra'}
+                      </span>
+                      . Kết nối: {cuaKhauSoConnectorRoleLabels}. Đồng bộ: {cuaKhauSoSyncRoleLabels}.
+                    </p>
+                  </div>
+
+                  <form
+                    onSubmit={submitLogin}
+                    className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end"
+                  >
+                    <TextInput
+                      label="Tài khoản Cửa khẩu số"
+                      placeholder="Tên đăng nhập được ủy quyền đọc"
+                      value={username}
+                      onChange={(event) => setUsername(event.target.value)}
+                    />
+                    <TextInput
+                      label="Mật khẩu"
+                      placeholder="Không lưu ở trình duyệt"
+                      type="password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                    />
+                    <Button
+                      disabled={
+                        isLoading ||
+                        isConnecting ||
+                        !username.trim() ||
+                        !password ||
+                        !canConnectIntegration
+                      }
+                    >
+                      {isLoading
+                        ? 'Đang kiểm tra quyền...'
+                        : canConnectIntegration
+                          ? isConnecting
+                            ? 'Đang kết nối...'
+                            : 'Kết nối chỉ đọc'
+                          : 'Không có quyền kết nối'}
+                    </Button>
+                  </form>
+                  {!isLoading && !canConnectIntegration ? (
+                    <p className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      Chỉ các vai trò được phân quyền tích hợp mới có thể tạo phiên đọc Cửa khẩu số.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                    Trạng thái an toàn
+                  </p>
+                  <p className="mt-2 text-2xl font-bold text-slate-950">
+                    {data?.session.authenticated ? 'Đã có phiên đọc' : 'Chưa kết nối'}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">
+                    {data?.session.authenticated
+                      ? `Tài khoản: ${data.session.username ?? 'không hiển thị'} · Hết hạn: ${formatApiDateTime(data.session.expiresAt)}`
+                      : 'Đăng nhập để backend giữ phiên nguồn. Browser không nhận token hoặc raw payload nguồn.'}
+                  </p>
+                  <p className="mt-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm leading-6 text-emerald-800">
+                    Credential nguồn chỉ gửi qua API GateSync sau auth + RBAC. Token phiên Cửa khẩu
+                    số được giữ ở backend và không được trả về frontend.
+                  </p>
+                </div>
+              </div>
+            </details>
           </section>
         </>
       ) : null}

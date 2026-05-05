@@ -8,6 +8,7 @@ import { AppShell } from '@/components/app-shell';
 import { NoOrganizationState } from '@/components/no-organization-state';
 import { PriorityBadge, TripStatusBadge } from '@/components/status-badge';
 import { TripTimeline } from '@/components/trip-timeline';
+import { Button, DateTimeInput, SelectInput, StatePanel, TextareaInput } from '@/components/ui';
 import { createManualTripEvent, loadTripDetailData } from '@/lib/operations/data';
 import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
 import type { TripDetailViewData } from '@/lib/operations/view-model';
@@ -46,11 +47,26 @@ function resolveManualEventOptions(actions?: TripEventType[]) {
   }));
 }
 
-export function TripDetailClient({ tripId }: { tripId: string }) {
-  const [data, setData] = useState<TripDetailViewData>();
-  const [error, setError] = useState<string>();
-  const [organizationIssue, setOrganizationIssue] = useState<OrganizationAccessIssue>();
-  const [isLoading, setIsLoading] = useState(true);
+type TripDetailClientProps = {
+  tripId: string;
+  initialData?: TripDetailViewData;
+  initialError?: string;
+  initialOrganizationIssue?: OrganizationAccessIssue;
+};
+
+export function TripDetailClient({
+  tripId,
+  initialData,
+  initialError,
+  initialOrganizationIssue
+}: TripDetailClientProps) {
+  const hasInitialState = Boolean(initialData || initialError || initialOrganizationIssue);
+  const [data, setData] = useState<TripDetailViewData | undefined>(initialData);
+  const [error, setError] = useState<string | undefined>(initialError);
+  const [organizationIssue, setOrganizationIssue] = useState<OrganizationAccessIssue | undefined>(
+    initialOrganizationIssue
+  );
+  const [isLoading, setIsLoading] = useState(!hasInitialState);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [eventType, setEventType] = useState<TripEventType>('ARRIVED_BORDER_AREA');
   const [occurredAt, setOccurredAt] = useState(toLocalDateTimeInputValue(new Date()));
@@ -60,6 +76,10 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
   const shellProps = data?.organization ? { organization: data.organization } : {};
 
   useEffect(() => {
+    if (hasInitialState) {
+      return;
+    }
+
     let isMounted = true;
 
     async function loadData() {
@@ -95,7 +115,7 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
     return () => {
       isMounted = false;
     };
-  }, [tripId]);
+  }, [hasInitialState, tripId]);
 
   useEffect(() => {
     const firstAction = data?.trip.availableManualActions[0];
@@ -178,15 +198,15 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
             </div>
           ) : null}
 
-          <section className="grid gap-5 xl:grid-cols-[1fr_22rem]">
+          <section className="grid gap-3 xl:grid-cols-[1fr_20rem]">
             <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap gap-2">
                     <TripStatusBadge status={trip.currentStatus} />
                     <PriorityBadge priority={trip.priority} />
                   </div>
-                  <h2 className="mt-4 text-3xl font-bold text-slate-950">
+                  <h2 className="mt-3 text-2xl font-bold text-slate-950">
                     {tripTypeLabels[trip.tripType]}
                   </h2>
                   <p className="mt-2 text-sm text-slate-600">
@@ -194,7 +214,7 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
                     {trip.statusUpdatedAt}
                   </p>
                 </div>
-                <div className="rounded-3xl border border-amber-100 bg-amber-50 px-5 py-4 text-slate-950">
+                <div className="rounded-3xl border border-amber-100 bg-amber-50 px-4 py-3 text-slate-950">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
                     Tiến độ
                   </p>
@@ -204,7 +224,7 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
                 </div>
               </div>
 
-              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <InfoCard
                   label="Phương tiện"
                   title={trip.vehicle.plateNumber}
@@ -219,23 +239,23 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
                 />
               </div>
 
-              <div className="mt-6 rounded-3xl border border-sky-100 bg-sky-50 p-5">
+              <div className="mt-4 rounded-3xl border border-sky-100 bg-sky-50 p-4">
                 <p className="text-sm font-semibold text-sky-900">{trip.nextActionLabel}</p>
                 <p className="mt-2 text-sm leading-6 text-slate-700">{trip.nextAction}</p>
               </div>
             </div>
 
-            <aside className="space-y-5">
-              <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
+            <aside className="space-y-3">
+              <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-3 shadow-soft sm:p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
                   Thao tác nhanh
                 </p>
-                <div className="mt-4 grid gap-3">
+                <div className="mt-3 grid gap-2">
                   <button
                     type="button"
                     disabled={!canManageTrips || manualActionOptions.length === 0}
                     onClick={() => setIsFormOpen((value) => !value)}
-                    className="min-h-12 rounded-2xl bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                    className="min-h-11 rounded-2xl bg-slate-950 px-4 py-2.5 text-left text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
                     {canManageTrips ? 'Ghi nhận sự kiện mới' : 'Chỉ xem timeline'}
                   </button>
@@ -248,7 +268,7 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
                         setEventType(option.value);
                         setIsFormOpen(true);
                       }}
-                      className="min-h-12 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-left text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-400"
+                      className="min-h-11 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-2.5 text-left text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-400"
                     >
                       {option.label}
                     </button>
@@ -271,53 +291,29 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
                     onSubmit={submitManualEvent}
                     className="mt-5 space-y-4 rounded-3xl bg-slate-50 p-4"
                   >
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Loại sự kiện
-                      </span>
-                      <select
-                        className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                        value={eventType}
-                        onChange={(inputEvent) =>
-                          setEventType(inputEvent.target.value as TripEventType)
-                        }
-                      >
-                        {manualActionOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Thời điểm xảy ra
-                      </span>
-                      <input
-                        className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                        type="datetime-local"
-                        value={occurredAt}
-                        onChange={(inputEvent) => setOccurredAt(inputEvent.target.value)}
-                        required
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Ghi chú
-                      </span>
-                      <textarea
-                        className="mt-2 min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                        placeholder="Nhập ghi chú vận hành ngắn gọn"
-                        value={note}
-                        onChange={(inputEvent) => setNote(inputEvent.target.value)}
-                      />
-                    </label>
-                    <button
-                      disabled={isSubmitting || manualActionOptions.length === 0}
-                      className="min-h-12 w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-                    >
+                    <SelectInput
+                      label="Loại sự kiện"
+                      value={eventType}
+                      options={manualActionOptions}
+                      onChange={(inputEvent) =>
+                        setEventType(inputEvent.target.value as TripEventType)
+                      }
+                    />
+                    <DateTimeInput
+                      label="Thời điểm xảy ra"
+                      value={occurredAt}
+                      onChange={(inputEvent) => setOccurredAt(inputEvent.target.value)}
+                      required
+                    />
+                    <TextareaInput
+                      label="Ghi chú"
+                      placeholder="Nhập ghi chú vận hành ngắn gọn"
+                      value={note}
+                      onChange={(inputEvent) => setNote(inputEvent.target.value)}
+                    />
+                    <Button disabled={isSubmitting || manualActionOptions.length === 0} fullWidth>
                       {isSubmitting ? 'Đang ghi nhận...' : 'Lưu sự kiện'}
-                    </button>
+                    </Button>
                   </form>
                 ) : null}
               </div>
@@ -351,19 +347,24 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
             </aside>
           </section>
 
-          <section className="grid gap-5 xl:grid-cols-[1fr_24rem]">
+          <section className="grid gap-3 xl:grid-cols-[1fr_22rem]">
             <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
                     Dòng thời gian sự kiện
                   </p>
                   <h2 className="mt-2 text-2xl font-bold text-slate-950">Lịch sử vận hành</h2>
                 </div>
-                <p className="max-w-xl text-sm leading-6 text-slate-600">
-                  Mỗi sự kiện thể hiện một mốc vận hành quan trọng kèm nguồn ghi nhận như thủ công,
-                  tài xế, Cửa khẩu số, bãi, GPS hoặc hệ thống.
-                </p>
+                <details className="max-w-xl text-sm leading-6 text-slate-600">
+                  <summary className="cursor-pointer list-none text-xs font-semibold text-slate-400">
+                    Nguồn sự kiện
+                  </summary>
+                  <p className="mt-1">
+                    Mỗi sự kiện thể hiện một mốc vận hành quan trọng kèm nguồn ghi nhận như thủ
+                    công, tài xế, Cửa khẩu số, bãi, GPS hoặc hệ thống.
+                  </p>
+                </details>
               </div>
               <div className="mt-5">
                 {trip.events.length > 0 ? (
@@ -401,7 +402,7 @@ export function TripDetailClient({ tripId }: { tripId: string }) {
 
 function InfoCard({ label, title, detail }: { label: string; title: string; detail: string }) {
   return (
-    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</p>
       <p className="mt-2 font-semibold text-slate-950">{title}</p>
       <p className="mt-1 text-sm text-slate-600">{detail}</p>
@@ -411,26 +412,13 @@ function InfoCard({ label, title, detail }: { label: string; title: string; deta
 
 function SidePanel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">{title}</p>
-      <div className="mt-4 space-y-4 text-sm text-slate-600">{children}</div>
-    </div>
+    <details className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-3 shadow-soft sm:p-4">
+      <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+        {title}
+      </summary>
+      <div className="mt-3 space-y-3 text-sm text-slate-600">{children}</div>
+    </details>
   );
-}
-
-function StatePanel({
-  message,
-  tone = 'default'
-}: {
-  message: string;
-  tone?: 'default' | 'error';
-}) {
-  const className =
-    tone === 'error'
-      ? 'border-rose-100 bg-rose-50 text-rose-700'
-      : 'border-dashed border-slate-200 bg-slate-50 text-slate-600';
-
-  return <div className={`rounded-3xl border p-5 text-sm ${className}`}>{message}</div>;
 }
 
 function toLocalDateTimeInputValue(date: Date) {

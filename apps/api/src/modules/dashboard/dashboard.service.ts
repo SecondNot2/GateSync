@@ -107,7 +107,10 @@ export class DashboardService {
       this.prisma.trip.findMany({
         where: {
           organizationId,
-          deletedAt: null
+          deletedAt: null,
+          currentStatus: {
+            in: [...activeStatuses]
+          }
         },
         include: tripSummaryInclude
       }),

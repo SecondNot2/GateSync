@@ -12,6 +12,7 @@ import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { NoOrganizationState } from '@/components/no-organization-state';
+import { Button, SelectInput, StatePanel, TextInput } from '@/components/ui';
 import {
   createAdminDriver,
   createAdminVehicle,
@@ -85,12 +86,25 @@ const roleDescriptions: Record<AdminMember['role'], string> = {
   BILLING_ADMIN: 'Theo dõi và xử lý nghiệp vụ thanh toán, không điều phối chuyến.'
 };
 
-export function AdminClient() {
-  const [data, setData] = useState<AdminViewData>();
-  const [error, setError] = useState<string>();
-  const [organizationIssue, setOrganizationIssue] = useState<OrganizationAccessIssue>();
+type AdminClientProps = {
+  initialData?: AdminViewData;
+  initialError?: string;
+  initialOrganizationIssue?: OrganizationAccessIssue;
+};
+
+export function AdminClient({
+  initialData,
+  initialError,
+  initialOrganizationIssue
+}: AdminClientProps = {}) {
+  const hasInitialState = Boolean(initialData || initialError || initialOrganizationIssue);
+  const [data, setData] = useState<AdminViewData | undefined>(initialData);
+  const [error, setError] = useState<string | undefined>(initialError);
+  const [organizationIssue, setOrganizationIssue] = useState<OrganizationAccessIssue | undefined>(
+    initialOrganizationIssue
+  );
   const [message, setMessage] = useState<string>();
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!hasInitialState);
   const [isSaving, setIsSaving] = useState(false);
   const [vehicleForm, setVehicleForm] = useState<VehicleFormState>(emptyVehicleForm);
   const [driverForm, setDriverForm] = useState<DriverFormState>(emptyDriverForm);
@@ -105,6 +119,10 @@ export function AdminClient() {
   const canManageMembers = data?.profile.canManageMembers ?? false;
 
   useEffect(() => {
+    if (hasInitialState) {
+      return;
+    }
+
     let isMounted = true;
 
     async function fetchData() {
@@ -140,7 +158,7 @@ export function AdminClient() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [hasInitialState]);
 
   async function reload() {
     const result = await loadAdminData();
@@ -362,51 +380,61 @@ export function AdminClient() {
           {data.notice ? <NoticePanel message={data.notice} /> : null}
           {message ? <NoticePanel message={message} tone="info" /> : null}
 
-          <section className="grid gap-5 xl:grid-cols-[1fr_24rem]">
-            <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                Hồ sơ tổ chức
-              </p>
-              <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <InfoTile
-                  label="Tên tổ chức"
-                  title={data.profile.name}
-                  detail={organizationTypeLabels[data.profile.type]}
-                  className="md:col-span-2"
-                />
-                <InfoTile label="Mã số thuế" title={data.profile.taxCode} />
-                <InfoTile label="Địa bàn" title={data.profile.location} />
-                <InfoTile label="Email" title={data.profile.email} />
-                <InfoTile label="Điện thoại" title={data.profile.phone} />
-              </div>
-            </div>
+          <section className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-3 shadow-soft sm:p-4">
+            <details>
+              <summary className="flex cursor-pointer list-none flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                    Hồ sơ tổ chức
+                  </p>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950 sm:text-2xl">
+                    {data.profile.name}
+                  </h2>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center text-xs font-semibold text-slate-600">
+                  <span className="rounded-2xl bg-slate-50 px-3 py-2">
+                    {data.members.length} thành viên
+                  </span>
+                  <span className="rounded-2xl bg-slate-50 px-3 py-2">
+                    {data.vehicles.length} xe
+                  </span>
+                  <span className="rounded-2xl bg-slate-50 px-3 py-2">
+                    {data.drivers.length} tài xế
+                  </span>
+                </div>
+              </summary>
 
-            <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                Điều hành đội nhóm
-              </p>
-              <p className="mt-4 text-sm leading-6 text-slate-700">
-                Vai trò hiện tại:{' '}
-                <span className="font-semibold text-slate-950">
-                  {membershipRoleLabels[data.profile.currentUserRole]}
-                </span>
-                . API vẫn kiểm tra tenant và RBAC cho mọi thao tác ghi.
-              </p>
-              <p className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-                {roleDescriptions[data.profile.currentUserRole]}
-              </p>
-              <div className="mt-5 grid gap-3 text-sm">
-                <span className="rounded-2xl bg-slate-50 px-4 py-3">
-                  {data.members.length} thành viên
-                </span>
-                <span className="rounded-2xl bg-slate-50 px-4 py-3">
-                  {data.vehicles.length} phương tiện
-                </span>
-                <span className="rounded-2xl bg-slate-50 px-4 py-3">
-                  {data.drivers.length} hồ sơ tài xế
-                </span>
+              <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_22rem]">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <InfoTile
+                    label="Tên tổ chức"
+                    title={data.profile.name}
+                    detail={organizationTypeLabels[data.profile.type]}
+                    className="md:col-span-2"
+                  />
+                  <InfoTile label="Mã số thuế" title={data.profile.taxCode} />
+                  <InfoTile label="Địa bàn" title={data.profile.location} />
+                  <InfoTile label="Email" title={data.profile.email} />
+                  <InfoTile label="Điện thoại" title={data.profile.phone} />
+                </div>
+
+                <div className="rounded-3xl border border-amber-100 bg-amber-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                    Điều hành đội nhóm
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-slate-700">
+                    Vai trò hiện tại:{' '}
+                    <span className="font-semibold text-slate-950">
+                      {membershipRoleLabels[data.profile.currentUserRole]}
+                    </span>
+                    . API vẫn kiểm tra tenant và RBAC cho mọi thao tác ghi.
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-amber-800">
+                    {roleDescriptions[data.profile.currentUserRole]}
+                  </p>
+                </div>
               </div>
-            </div>
+            </details>
           </section>
 
           <AdminSetupWizard
@@ -638,43 +666,45 @@ function AdminSetupWizard({
   ];
 
   return (
-    <section className="rounded-[1.75rem] border border-sky-100 bg-sky-50 p-4 shadow-soft sm:p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-            Trình thiết lập vận hành
-          </p>
-          <h2 className="mt-2 text-2xl font-bold text-slate-950">
-            Chuẩn bị tổ chức trước ca chạy thật
-          </h2>
-        </div>
-        <span className="w-fit rounded-full bg-white px-4 py-2 text-sm font-semibold text-sky-700">
-          {membershipRoleLabels[data.profile.currentUserRole]}
-        </span>
-      </div>
-      <div className="mt-5 grid gap-3 lg:grid-cols-3">
-        {steps.map((step, index) => (
-          <div key={step.title} className="rounded-3xl border border-white bg-white/80 p-4">
-            <div className="flex items-start gap-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">
-                {index + 1}
-              </span>
-              <div>
-                <p className="font-semibold text-slate-950">{step.title}</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{step.detail}</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              disabled={step.disabled}
-              onClick={step.onAction}
-              className="mt-4 min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-            >
-              {step.actionLabel}
-            </button>
+    <section className="rounded-[1.75rem] border border-sky-100 bg-sky-50 p-3 shadow-soft sm:p-4">
+      <details>
+        <summary className="flex cursor-pointer list-none flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+              Trình thiết lập vận hành
+            </p>
+            <h2 className="mt-1 text-xl font-bold text-slate-950 sm:text-2xl">
+              Chuẩn bị tổ chức trước ca chạy thật
+            </h2>
           </div>
-        ))}
-      </div>
+          <span className="w-fit rounded-full bg-white px-4 py-2 text-sm font-semibold text-sky-700">
+            {membershipRoleLabels[data.profile.currentUserRole]}
+          </span>
+        </summary>
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          {steps.map((step, index) => (
+            <div key={step.title} className="rounded-3xl border border-white bg-white/80 p-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">
+                  {index + 1}
+                </span>
+                <div>
+                  <p className="font-semibold text-slate-950">{step.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{step.detail}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={step.disabled}
+                onClick={step.onAction}
+                className="mt-4 min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+              >
+                {step.actionLabel}
+              </button>
+            </div>
+          ))}
+        </div>
+      </details>
     </section>
   );
 }
@@ -940,18 +970,13 @@ function InputField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-        {label}
-      </span>
-      <input
-        required={required}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-      />
-    </label>
+    <TextInput
+      label={label}
+      required={required}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+    />
   );
 }
 
@@ -967,34 +992,20 @@ function SelectField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-      >
-        {options.map((option) => (
-          <option key={option.value || option.label} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <SelectInput
+      label={label}
+      value={value}
+      options={options}
+      onChange={(event) => onChange(event.target.value)}
+    />
   );
 }
 
 function SubmitButton({ isSaving, label }: { isSaving: boolean; label: string }) {
   return (
-    <button
-      type="submit"
-      disabled={isSaving}
-      className="min-h-12 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-    >
+    <Button type="submit" disabled={isSaving}>
       {isSaving ? 'Đang lưu...' : label}
-    </button>
+    </Button>
   );
 }
 
@@ -1069,24 +1080,6 @@ function NoticePanel({
       : 'border-amber-100 bg-amber-50 text-amber-800';
   return (
     <div className={`rounded-3xl border px-5 py-4 text-sm font-semibold ${className}`}>
-      {message}
-    </div>
-  );
-}
-
-function StatePanel({
-  message,
-  tone = 'loading'
-}: {
-  message: string;
-  tone?: 'loading' | 'error';
-}) {
-  const className =
-    tone === 'error'
-      ? 'border-rose-100 bg-rose-50 text-rose-800'
-      : 'border-slate-200 bg-white text-slate-600';
-  return (
-    <div className={`rounded-3xl border px-5 py-6 text-sm font-semibold shadow-soft ${className}`}>
       {message}
     </div>
   );

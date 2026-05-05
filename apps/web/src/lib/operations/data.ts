@@ -12,7 +12,7 @@ import type {
   UpdateDriverPayload,
   UpdateVehiclePayload
 } from '@/lib/api/types';
-import { resolveWebApiSession } from '@/lib/api/session';
+import { resolveWebApiSession, type WebApiSession } from '@/lib/api/session';
 import { OrganizationAccessError } from '@/lib/operations/errors';
 import type {
   AdminViewData,
@@ -29,9 +29,28 @@ import {
   toOrganizationContext
 } from '@/lib/operations/view-model';
 
+type ActiveOrganizationContext = {
+  organization: ApiOrganization;
+  currentUser: ApiCurrentUser;
+};
+
+let browserActiveOrganizationCache:
+  | {
+      accessToken: string;
+      expiresAt: number;
+      promise: Promise<ActiveOrganizationContext>;
+    }
+  | undefined;
+
 export async function loadDashboardData(): Promise<DashboardViewData> {
   const session = await resolveWebApiSession();
 
+  return loadDashboardDataForSession(session);
+}
+
+export async function loadDashboardDataForSession(
+  session: WebApiSession
+): Promise<DashboardViewData> {
   if (session.mode === 'dev') {
     const fallback = await import('@/lib/operations/dev-fallback');
     return fallback.getDevDashboardData(session.reason);
@@ -49,6 +68,13 @@ export async function loadDashboardData(): Promise<DashboardViewData> {
 export async function loadTripsData(filters: ListTripsParams): Promise<TripsViewData> {
   const session = await resolveWebApiSession();
 
+  return loadTripsDataForSession(session, filters);
+}
+
+export async function loadTripsDataForSession(
+  session: WebApiSession,
+  filters: ListTripsParams
+): Promise<TripsViewData> {
   if (session.mode === 'dev') {
     const fallback = await import('@/lib/operations/dev-fallback');
     return fallback.getDevTripsData(filters, session.reason);
@@ -65,6 +91,13 @@ export async function loadTripsData(filters: ListTripsParams): Promise<TripsView
 export async function loadTripDetailData(tripId: string): Promise<TripDetailViewData> {
   const session = await resolveWebApiSession();
 
+  return loadTripDetailDataForSession(session, tripId);
+}
+
+export async function loadTripDetailDataForSession(
+  session: WebApiSession,
+  tripId: string
+): Promise<TripDetailViewData> {
   if (session.mode === 'dev') {
     const fallback = await import('@/lib/operations/dev-fallback');
     return fallback.getDevTripDetailData(tripId, session.reason);
@@ -82,6 +115,10 @@ export async function loadTripDetailData(tripId: string): Promise<TripDetailView
 export async function loadAdminData(): Promise<AdminViewData> {
   const session = await resolveWebApiSession();
 
+  return loadAdminDataForSession(session);
+}
+
+export async function loadAdminDataForSession(session: WebApiSession): Promise<AdminViewData> {
   if (session.mode === 'dev') {
     const fallback = await import('@/lib/operations/dev-fallback');
     return fallback.getDevAdminData(session.reason);
@@ -269,9 +306,37 @@ async function resolveWriteSession() {
   return session;
 }
 
-async function resolveActiveOrganization(
-  accessToken: string
-): Promise<{ organization: ApiOrganization; currentUser: ApiCurrentUser }> {
+async function resolveActiveOrganization(accessToken: string): Promise<ActiveOrganizationContext> {
+  if (
+    typeof window !== 'undefined' &&
+    browserActiveOrganizationCache?.accessToken === accessToken &&
+    browserActiveOrganizationCache.expiresAt > Date.now()
+  ) {
+    return browserActiveOrganizationCache.promise;
+  }
+
+  const promise = fetchActiveOrganization(accessToken);
+
+  if (typeof window !== 'undefined') {
+    browserActiveOrganizationCache = {
+      accessToken,
+      expiresAt: Date.now() + 30_000,
+      promise
+    };
+  }
+
+  try {
+    return await promise;
+  } catch (error) {
+    if (typeof window !== 'undefined') {
+      browserActiveOrganizationCache = undefined;
+    }
+
+    throw error;
+  }
+}
+
+async function fetchActiveOrganization(accessToken: string): Promise<ActiveOrganizationContext> {
   const [currentUser, organizations] = await Promise.all([
     gatesyncApi.getMe({ accessToken }),
     gatesyncApi.listOrganizations({ accessToken })

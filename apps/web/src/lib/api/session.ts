@@ -10,37 +10,70 @@ export type WebApiSession =
       reason: string;
     };
 
+let browserSessionCache:
+  | {
+      expiresAt: number;
+      promise: Promise<WebApiSession>;
+    }
+  | undefined;
+
 export async function resolveWebApiSession(): Promise<WebApiSession> {
   if (!webEnv.hasSupabaseConfig) {
     return resolveDevFallback('Chưa cấu hình Supabase cho web app.');
   }
 
-  const response = await fetch('/auth/session', {
+  if (
+    typeof window !== 'undefined' &&
+    browserSessionCache &&
+    browserSessionCache.expiresAt > Date.now()
+  ) {
+    return browserSessionCache.promise;
+  }
+
+  const sessionPromise = fetch('/auth/session', {
     method: 'GET',
     credentials: 'include'
+  }).then(async (response) => {
+    const data = (await response.json().catch(() => ({}))) as {
+      accessToken?: string;
+      error?: {
+        message?: string;
+      };
+    };
+
+    if (!response.ok) {
+      return resolveDevFallback(data.error?.message ?? 'Không đọc được phiên đăng nhập GateSync.');
+    }
+
+    const accessToken = data.accessToken;
+
+    if (!accessToken) {
+      return resolveDevFallback('Chưa có phiên đăng nhập GateSync.');
+    }
+
+    return {
+      mode: 'api',
+      accessToken
+    } satisfies WebApiSession;
   });
 
-  const data = (await response.json().catch(() => ({}))) as {
-    accessToken?: string;
-    error?: {
-      message?: string;
+  if (typeof window !== 'undefined') {
+    browserSessionCache = {
+      expiresAt: Date.now() + 30_000,
+      promise: sessionPromise
     };
-  };
-
-  if (!response.ok) {
-    return resolveDevFallback(data.error?.message ?? 'Không đọc được phiên đăng nhập GateSync.');
   }
 
-  const accessToken = data.accessToken;
-
-  if (!accessToken) {
-    return resolveDevFallback('Chưa có phiên đăng nhập GateSync.');
+  try {
+    return await sessionPromise;
+  } catch (error) {
+    clearWebApiSessionCache();
+    throw error;
   }
+}
 
-  return {
-    mode: 'api',
-    accessToken
-  };
+export function clearWebApiSessionCache() {
+  browserSessionCache = undefined;
 }
 
 function resolveDevFallback(reason: string): WebApiSession {

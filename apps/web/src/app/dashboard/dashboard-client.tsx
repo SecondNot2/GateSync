@@ -17,14 +17,31 @@ import {
   tripStatusLabels
 } from '@/lib/ui-labels';
 
-export function DashboardClient() {
-  const [data, setData] = useState<DashboardViewData>();
-  const [error, setError] = useState<string>();
-  const [organizationIssue, setOrganizationIssue] = useState<OrganizationAccessIssue>();
-  const [isLoading, setIsLoading] = useState(true);
+type DashboardClientProps = {
+  initialData?: DashboardViewData;
+  initialError?: string;
+  initialOrganizationIssue?: OrganizationAccessIssue;
+};
+
+export function DashboardClient({
+  initialData,
+  initialError,
+  initialOrganizationIssue
+}: DashboardClientProps = {}) {
+  const hasInitialState = Boolean(initialData || initialOrganizationIssue);
+  const [data, setData] = useState<DashboardViewData | undefined>(initialData);
+  const [error, setError] = useState<string | undefined>(initialError);
+  const [organizationIssue, setOrganizationIssue] = useState<OrganizationAccessIssue | undefined>(
+    initialOrganizationIssue
+  );
+  const [isLoading, setIsLoading] = useState(!hasInitialState);
   const shellProps = data?.organization ? { organization: data.organization } : {};
 
   useEffect(() => {
+    if (hasInitialState) {
+      return;
+    }
+
     let isMounted = true;
 
     async function loadData() {
@@ -60,7 +77,7 @@ export function DashboardClient() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [hasInitialState]);
 
   return (
     <AppShell
@@ -96,8 +113,6 @@ function DashboardContent({ data }: { data: DashboardViewData }) {
           {data.notice}
         </div>
       ) : null}
-
-      <RoleFocusPanel data={data} />
 
       <section className="grid gap-5 xl:grid-cols-[1fr_22rem]">
         <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
@@ -165,6 +180,8 @@ function DashboardContent({ data }: { data: DashboardViewData }) {
           </div>
         ))}
       </section>
+
+      <RoleFocusPanel data={data} />
 
       <section className="grid gap-5 xl:grid-cols-[1fr_24rem]">
         <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
@@ -323,39 +340,38 @@ function RoleFocusPanel({ data }: { data: DashboardViewData }) {
   const currentUser = data.organization.currentUser;
 
   return (
-    <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-      <div className="rounded-[1.75rem] border border-sky-100 bg-sky-50 p-4 shadow-soft sm:p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <section className="rounded-[1.75rem] border border-sky-100 bg-sky-50 p-3 shadow-soft sm:p-4">
+      <details>
+        <summary className="flex cursor-pointer list-none flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
               Bàn làm việc theo vai trò
             </p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-950">{summary.title}</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-700">{summary.description}</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-950 sm:text-2xl">{summary.title}</h2>
           </div>
           <span className="w-fit rounded-full bg-white px-4 py-2 text-sm font-semibold text-sky-700">
             {currentUser ? membershipRoleLabels[currentUser.role] : 'Đang xác thực'}
           </span>
-        </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <RoleActionLink href={summary.primaryHref} label={summary.primaryLabel} primary />
-          <RoleActionLink href={summary.secondaryHref} label={summary.secondaryLabel} />
-        </div>
-      </div>
+        </summary>
 
-      <div className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-          Việc nên làm tiếp
-        </p>
-        <div className="mt-4 space-y-3">
-          {summary.tasks.map((task) => (
-            <div key={task.title} className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
-              <p className="font-semibold text-slate-950">{task.title}</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{task.detail}</p>
+        <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_1.2fr]">
+          <div className="rounded-3xl bg-white/80 p-4">
+            <p className="text-sm leading-6 text-slate-700">{summary.description}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <RoleActionLink href={summary.primaryHref} label={summary.primaryLabel} primary />
+              <RoleActionLink href={summary.secondaryHref} label={summary.secondaryLabel} />
             </div>
-          ))}
+          </div>
+          <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
+            {summary.tasks.map((task) => (
+              <div key={task.title} className="rounded-3xl border border-white bg-white/80 p-4">
+                <p className="font-semibold text-slate-950">{task.title}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{task.detail}</p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </details>
     </section>
   );
 }
