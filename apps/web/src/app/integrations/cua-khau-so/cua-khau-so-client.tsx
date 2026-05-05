@@ -13,12 +13,14 @@ import type {
   ApiCuaKhauSoPageSize,
   ApiCuaKhauSoStatus,
   ApiCuaKhauSoSyncResult,
+  ApiIntegrationSyncRun,
   ListCuaKhauSoDeclarationsParams
 } from '@/lib/api/types';
 import {
   connectCuaKhauSo,
   getCuaKhauSoDeclaration,
   loadCuaKhauSoData,
+  runCuaKhauSoSyncNow,
   syncCuaKhauSoDeclaration
 } from '@/lib/operations/data';
 import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
@@ -68,6 +70,7 @@ export function CuaKhauSoClient() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isRunningSyncNow, setIsRunningSyncNow] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [keyword, setKeyword] = useState('');
@@ -221,6 +224,29 @@ export function CuaKhauSoClient() {
     }
   }
 
+  async function runManualAutoSync() {
+    if (!canSyncIntegration) {
+      setError('Vai trò hiện tại không có quyền chạy đồng bộ tự động.');
+      return;
+    }
+
+    setIsRunningSyncNow(true);
+    setMessage(undefined);
+    setError(undefined);
+
+    try {
+      const result = await runCuaKhauSoSyncNow();
+      setMessage(
+        `Đã chạy đồng bộ tổ chức: ${result.detailsFetched} chi tiết, ${result.eventsCreated} sự kiện mới, ${result.eventsSkipped} sự kiện bỏ qua.`
+      );
+      await reload();
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : 'Không thể chạy đồng bộ tự động.');
+    } finally {
+      setIsRunningSyncNow(false);
+    }
+  }
+
   return (
     <AppShell
       activeNav="integrations"
@@ -329,6 +355,36 @@ export function CuaKhauSoClient() {
                 />
               </div>
             ) : null}
+          </section>
+
+          <section className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-soft sm:p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                  Tự động đồng bộ
+                </p>
+                <h2 className="mt-2 text-2xl font-bold text-slate-950">
+                  Polling Cửa khẩu số cấp tổ chức
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                  Worker backend dùng credential đã mã hóa để đọc danh sách/chi tiết tờ khai, tạo sự
+                  kiện timeline idempotent cho sang tải, vào bãi, thông quan và giải phóng xe. Không
+                  có thao tác ghi ngược lên hệ thống nguồn.
+                </p>
+              </div>
+              <Button
+                type="button"
+                disabled={!canSyncIntegration || isRunningSyncNow || !data?.session.authenticated}
+                onClick={() => void runManualAutoSync()}
+              >
+                {canSyncIntegration
+                  ? isRunningSyncNow
+                    ? 'Đang chạy...'
+                    : 'Chạy đồng bộ ngay'
+                  : 'Không có quyền đồng bộ'}
+              </Button>
+            </div>
+            <SyncRunList syncRuns={data?.syncRuns ?? []} />
           </section>
 
           <section className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-3 shadow-soft sm:p-4">
@@ -490,6 +546,55 @@ function DeclarationList({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function SyncRunList({ syncRuns }: { syncRuns: ApiIntegrationSyncRun[] }) {
+  if (syncRuns.length === 0) {
+    return (
+      <p className="mt-4 rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-5 py-5 text-sm text-slate-600">
+        Chưa có lịch sử chạy đồng bộ. Khi worker hoặc nút “Chạy đồng bộ ngay” hoạt động, các lần
+        chạy sẽ hiển thị tại đây.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+      {syncRuns.slice(0, 6).map((run) => (
+        <div key={run.id} className="rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-bold text-slate-950">
+              {run.mode === 'AUTO' ? 'Tự động' : 'Thủ công'}
+            </span>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-bold ${
+                run.status === 'SUCCEEDED'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : run.status === 'FAILED'
+                    ? 'bg-rose-100 text-rose-700'
+                    : run.status === 'PARTIAL'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-sky-100 text-sky-700'
+              }`}
+            >
+              {run.status}
+            </span>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Bắt đầu {formatApiDateTime(run.startedAt)}
+            {run.finishedAt ? ` · xong ${formatApiDateTime(run.finishedAt)}` : ''}
+          </p>
+          <p className="mt-2 text-sm text-slate-700">
+            {run.detailsFetched} chi tiết · {run.eventsCreated} sự kiện mới · {run.eventsSkipped} bỏ
+            qua
+          </p>
+          {run.errorMessage ? (
+            <p className="mt-2 text-xs font-semibold text-rose-700">{run.errorMessage}</p>
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }

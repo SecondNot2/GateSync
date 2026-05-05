@@ -1,8 +1,10 @@
 import { gatesyncApi } from '@/lib/api/gatesync';
+import { hasOrganizationPermission } from '@gatesync/shared';
 import type {
   ApiCurrentUser,
   ApiOrganization,
   CreateDriverPayload,
+  CreateDriverTripMediaPayload,
   CuaKhauSoLoginPayload,
   CreateTripEventPayload,
   CreateVehiclePayload,
@@ -182,6 +184,12 @@ export async function loadCuaKhauSoData(
         totalPage: 0,
         message: 'Vui lòng đăng nhập Cửa khẩu số để xem dữ liệu.'
       };
+  const activeMembership = organization.currentUserMembership;
+  const syncRuns = hasOrganizationPermission(activeMembership.role, 'integrations:cua-khau-so:sync')
+    ? await gatesyncApi.listCuaKhauSoSyncRuns(organization.id, {
+        accessToken: session.accessToken
+      })
+    : [];
 
   return {
     organization: toOrganizationContext(
@@ -190,7 +198,8 @@ export async function loadCuaKhauSoData(
       declarations.declarations.length
     ),
     session: sourceSession,
-    declarations
+    declarations,
+    syncRuns
   };
 }
 
@@ -220,6 +229,34 @@ export async function syncCuaKhauSoDeclaration(
   const { organization } = await resolveActiveOrganization(session.accessToken);
 
   return gatesyncApi.syncCuaKhauSoDeclaration(organization.id, externalId, payload, {
+    accessToken: session.accessToken
+  });
+}
+
+export async function runCuaKhauSoSyncNow() {
+  const session = await resolveWriteSession();
+  const { organization } = await resolveActiveOrganization(session.accessToken);
+
+  return gatesyncApi.runCuaKhauSoSyncNow(organization.id, {
+    accessToken: session.accessToken
+  });
+}
+
+export async function loadMyDriverTrips() {
+  const session = await resolveWriteSession();
+
+  return gatesyncApi.listMyDriverTrips({
+    accessToken: session.accessToken
+  });
+}
+
+export async function createMyDriverTripMedia(
+  tripId: string,
+  payload: CreateDriverTripMediaPayload
+) {
+  const session = await resolveWriteSession();
+
+  return gatesyncApi.createMyDriverTripMedia(tripId, payload, {
     accessToken: session.accessToken
   });
 }

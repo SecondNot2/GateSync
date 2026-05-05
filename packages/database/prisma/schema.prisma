@@ -124,6 +124,15 @@ enum TripEventType {
   INSPECTION_COMPLETED
   FEE_PAID
   BORDER_GATE_EXIT_CONFIRMED
+  TRANSSHIPMENT_ELIGIBLE
+  TRANSSHIPMENT_SIGNED
+  TRANSSHIPMENT_STARTED
+  TRANSSHIPMENT_COMPLETED
+  DRIVER_LOCATION_SHARED
+  DRIVER_MEDIA_UPLOADED
+  RELEASE_READY
+  RELEASE_REQUESTED
+  VEHICLE_RELEASED
   PROOF_IMAGE_UPLOADED
   DRIVER_NOTE_ADDED
   TRIP_CANCELLED
@@ -169,9 +178,25 @@ enum IntegrationStatus {
 enum NotificationChannel {
   EMAIL
   IN_APP
+  WEB_PUSH
   ZALO_OA
   SMS
   WEBHOOK
+}
+
+enum IntegrationSyncRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  PARTIAL
+}
+
+enum TripMediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  OTHER
 }
 
 enum NotificationStatus {
@@ -219,8 +244,10 @@ model Organization {
   tripParticipants     TripParticipant[]
   tripEvents           TripEvent[]
   integrationAccounts  IntegrationAccount[]
+  integrationSyncRuns  IntegrationSyncRun[]
   notificationRules    NotificationRule[]
   notifications        Notification[]
+  tripMediaAttachments TripMediaAttachment[]
   auditLogs            AuditLog[]
 
   @@index([type])
@@ -245,6 +272,7 @@ model User {
   createdTrips       Trip[]            @relation("TripCreatedBy")
   tripParticipants   TripParticipant[]
   tripEvents         TripEvent[]       @relation("TripEventCreatedBy")
+  uploadedTripMediaAttachments TripMediaAttachment[] @relation("TripMediaAttachmentUploadedBy")
   notifications      Notification[]
   auditLogs          AuditLog[]
 
@@ -437,6 +465,7 @@ model Trip {
   createdBy                User?                @relation("TripCreatedBy", fields: [createdById], references: [id])
   participants             TripParticipant[]
   events                   TripEvent[]
+  mediaAttachments         TripMediaAttachment[]
   notifications            Notification[]
 
   @@unique([organizationId, tripCode])
@@ -482,6 +511,7 @@ model TripEvent {
   trip            Trip              @relation(fields: [tripId], references: [id])
   organization    Organization      @relation(fields: [organizationId], references: [id])
   createdBy       User?             @relation("TripEventCreatedBy", fields: [createdById], references: [id])
+  mediaAttachments TripMediaAttachment[]
 
   @@unique([idempotencyKey])
   @@index([tripId, occurredAt])
@@ -502,10 +532,61 @@ model IntegrationAccount {
   deletedAt             DateTime?
   deletedById           String?               @db.Uuid
   organization          Organization          @relation(fields: [organizationId], references: [id])
+  syncRuns              IntegrationSyncRun[]
 
   @@unique([organizationId, provider, displayName])
   @@index([organizationId, provider])
   @@map("integration_accounts")
+}
+
+model IntegrationSyncRun {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  organizationId       String                   @db.Uuid
+  integrationAccountId String                   @db.Uuid
+  status               IntegrationSyncRunStatus @default(RUNNING)
+  mode                 String                   @default("AUTO")
+  startedAt            DateTime                 @default(now())
+  finishedAt           DateTime?
+  recordsFetched       Int                      @default(0)
+  detailsFetched       Int                      @default(0)
+  eventsCreated        Int                      @default(0)
+  eventsSkipped        Int                      @default(0)
+  errorMessage         String?
+  metadata             Json?
+  organization         Organization             @relation(fields: [organizationId], references: [id])
+  integrationAccount   IntegrationAccount       @relation(fields: [integrationAccountId], references: [id])
+
+  @@index([organizationId, startedAt])
+  @@index([integrationAccountId, startedAt])
+  @@index([status, startedAt])
+  @@map("integration_sync_runs")
+}
+
+model TripMediaAttachment {
+  id              String         @id @default(uuid()) @db.Uuid
+  organizationId  String         @db.Uuid
+  tripId          String         @db.Uuid
+  tripEventId     String?        @db.Uuid
+  uploadedById    String?        @db.Uuid
+  mediaType       TripMediaType
+  fileName        String
+  mimeType        String?
+  storagePath     String?
+  publicUrl       String?
+  sizeBytes       Int?
+  message         String?
+  metadata        Json?
+  createdAt       DateTime       @default(now())
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  trip            Trip           @relation(fields: [tripId], references: [id])
+  tripEvent       TripEvent?     @relation(fields: [tripEventId], references: [id])
+  uploadedBy      User?          @relation("TripMediaAttachmentUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([tripId, createdAt])
+  @@index([tripEventId])
+  @@index([uploadedById])
+  @@map("trip_media_attachments")
 }
 
 model NotificationRule {

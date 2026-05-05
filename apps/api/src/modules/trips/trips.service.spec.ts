@@ -3,6 +3,7 @@ import test from 'node:test';
 import { NotFoundException } from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RequestUser } from '../auth/request-user';
+import type { NotificationsService } from '../notifications/notifications.service';
 import type { CreateTripEventDto } from './dto/create-trip-event.dto';
 import type { CreateTripDto } from './dto/create-trip.dto';
 import type { ListTripsQueryDto } from './dto/list-trips-query.dto';
@@ -24,9 +25,15 @@ const requestUser: RequestUser = {
   ]
 };
 
-function createService(prisma: unknown): TripsService {
+function createService(
+  prisma: unknown,
+  notifications?: Partial<NotificationsService>
+): TripsService {
   return new TripsService(
     prisma as PrismaService,
+    (notifications ?? {
+      createTripEventNotifications: async () => undefined
+    }) as NotificationsService,
     new TripOperationsService(),
     new TripStateTransitionService()
   );
@@ -230,7 +237,14 @@ test('createEvent applies a valid transition and stores idempotency key', async 
   let tripFindWhere: Record<string, unknown> | undefined;
   let tripUpdateData: Record<string, unknown> | undefined;
   let eventCreateData: Record<string, unknown> | undefined;
-  let notificationCreateData: Array<Record<string, unknown>> | undefined;
+  let notificationCall:
+    | {
+        organizationId: string;
+        tripId: string;
+        event: { id: string; eventType: string; occurredAt: Date };
+        currentStatus: string;
+      }
+    | undefined;
   const tx = {
     trip: {
       findFirst: async ({ where }: { where: Record<string, unknown> }) => {
@@ -258,22 +272,6 @@ test('createEvent applies a valid transition and stores idempotency key', async 
     },
     auditLog: {
       create: async ({ data }: { data: Record<string, unknown> }) => data
-    },
-    membership: {
-      findMany: async () => [
-        {
-          userId: 'user-1'
-        },
-        {
-          userId: 'user-2'
-        }
-      ]
-    },
-    notification: {
-      createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => {
-        notificationCreateData = data;
-        return { count: data.length };
-      }
     }
   };
   const prisma = {
@@ -282,7 +280,22 @@ test('createEvent applies a valid transition and stores idempotency key', async 
     },
     $transaction: async (callback: (txClient: typeof tx) => Promise<unknown>) => callback(tx)
   };
-  const service = createService(prisma);
+  const service = createService(prisma, {
+    createTripEventNotifications: async (
+      _tx,
+      organizationId: string,
+      tripId: string,
+      event: { id: string; eventType: string; occurredAt: Date },
+      currentStatus: string
+    ) => {
+      notificationCall = {
+        organizationId,
+        tripId,
+        event,
+        currentStatus
+      };
+    }
+  });
   const dto: CreateTripEventDto = {
     eventType: 'DEPARTED',
     occurredAt: '2026-05-04T00:00:00.000Z'
@@ -298,15 +311,12 @@ test('createEvent applies a valid transition and stores idempotency key', async 
   });
   assert.equal(tripUpdateData?.currentStatus, 'IN_PROGRESS');
   assert.equal(eventCreateData?.idempotencyKey, 'manual-event-1');
-  assert.equal(notificationCreateData?.length, 2);
-  assert.equal(notificationCreateData?.[0]?.channel, 'IN_APP');
-  assert.deepEqual(notificationCreateData?.[0]?.payload, {
-    kind: 'trip_event',
-    eventId: 'event-1',
-    eventType: 'DEPARTED',
-    currentStatus: 'IN_PROGRESS',
-    occurredAt: '2026-05-04T00:00:00.000Z'
-  });
+  assert.equal(notificationCall?.organizationId, 'org-1');
+  assert.equal(notificationCall?.tripId, 'trip-1');
+  assert.equal(notificationCall?.event.id, 'event-1');
+  assert.equal(notificationCall?.event.eventType, 'DEPARTED');
+  assert.equal(notificationCall?.event.occurredAt.toISOString(), '2026-05-04T00:00:00.000Z');
+  assert.equal(notificationCall?.currentStatus, 'IN_PROGRESS');
 });
 
 test('listEvents does not expose raw payload data', async () => {

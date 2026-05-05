@@ -1,8 +1,17 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { RequestUser } from '../auth/request-user';
 import { PrismaService } from '../prisma/prisma.service';
+import { TripsService } from '../trips/trips.service';
+import type { CreateTripEventDto } from '../trips/dto/create-trip-event.dto';
 import type { CreateDriverDto } from './dto/create-driver.dto';
+import type { CreateDriverTripMediaDto } from './dto/create-driver-trip-media.dto';
 import type { UpdateDriverDto } from './dto/update-driver.dto';
 
 const driverInclude = {
@@ -36,9 +45,23 @@ const driverInclude = {
   }
 } satisfies Prisma.DriverProfileInclude;
 
+type TripMediaAttachmentDelegate = {
+  create(args: {
+    data: Record<string, unknown>;
+    include?: Record<string, unknown>;
+  }): Promise<unknown>;
+};
+
+type PrismaWithTripMedia = PrismaService & {
+  tripMediaAttachment: TripMediaAttachmentDelegate;
+};
+
 @Injectable()
 export class DriversService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(TripsService) private readonly tripsService: TripsService
+  ) {}
 
   listDrivers(organizationId: string) {
     return this.prisma.driverProfile.findMany({
@@ -181,6 +204,187 @@ export class DriversService {
     return {
       id: driverProfileId,
       deleted: true
+    };
+  }
+
+  async listAssignedTripsForDriver(user: RequestUser) {
+    const driverProfiles = await this.prisma.driverProfile.findMany({
+      where: {
+        userId: user.id,
+        deletedAt: null
+      },
+      select: {
+        id: true
+      }
+    });
+    const driverProfileIds = driverProfiles.map((profile) => profile.id);
+
+    return this.prisma.trip.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          {
+            driverProfileId: {
+              in: driverProfileIds
+            }
+          },
+          {
+            participants: {
+              some: {
+                userId: user.id,
+                role: 'DRIVER'
+              }
+            }
+          }
+        ]
+      },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            type: true
+          }
+        },
+        vehicle: true,
+        driverProfile: true,
+        borderGate: true,
+        yard: true,
+        customsDeclaration: true,
+        events: {
+          orderBy: [
+            {
+              occurredAt: 'desc'
+            },
+            {
+              recordedAt: 'desc'
+            }
+          ],
+          take: 10
+        }
+      },
+      orderBy: [
+        {
+          plannedStartAt: 'desc'
+        },
+        {
+          createdAt: 'desc'
+        }
+      ],
+      take: 50
+    });
+  }
+
+  async createDriverTripMedia(user: RequestUser, tripId: string, dto: CreateDriverTripMediaDto) {
+    if (!dto.storagePath && !dto.publicUrl) {
+      throw new BadRequestException(
+        'Media must include a Supabase storage path or accessible URL.'
+      );
+    }
+
+    const trip = await this.prisma.trip.findFirst({
+      where: {
+        id: tripId,
+        deletedAt: null,
+        OR: [
+          {
+            driverProfile: {
+              userId: user.id,
+              deletedAt: null
+            }
+          },
+          {
+            participants: {
+              some: {
+                userId: user.id,
+                role: 'DRIVER'
+              }
+            }
+          }
+        ]
+      },
+      select: {
+        id: true,
+        organizationId: true,
+        tripCode: true
+      }
+    });
+
+    if (!trip) {
+      throw new NotFoundException('Không tìm thấy chuyến được gán cho tài xế hiện tại.');
+    }
+
+    const rawPayload = {
+      source: 'DRIVER_PORTAL',
+      mediaType: dto.mediaType,
+      fileName: dto.fileName,
+      storagePath: dto.storagePath ?? null,
+      publicUrl: dto.publicUrl ?? null,
+      sizeBytes: dto.sizeBytes ?? null,
+      metadata: dto.metadata ?? null
+    };
+    const eventPayload: CreateTripEventDto = {
+      eventType: 'DRIVER_MEDIA_UPLOADED' as CreateTripEventDto['eventType'],
+      occurredAt: dto.occurredAt ?? new Date().toISOString(),
+      source: 'DRIVER_APP' as NonNullable<CreateTripEventDto['source']>,
+      sourceRef: dto.storagePath ?? dto.publicUrl ?? dto.fileName,
+      note: dto.message ?? `Tài xế đã tải lên ${dto.fileName}.`,
+      confidence: 0.95,
+      rawPayload
+    };
+    const stableMediaKey = dto.storagePath ?? dto.publicUrl;
+    const event = await this.tripsService.createEvent(
+      user,
+      trip.organizationId,
+      trip.id,
+      eventPayload,
+      stableMediaKey ? `driver-media:${trip.id}:${stableMediaKey}` : undefined
+    );
+    const mediaData: Record<string, unknown> = {
+      organizationId: trip.organizationId,
+      tripId: trip.id,
+      tripEventId: event.id,
+      uploadedById: user.id,
+      mediaType: dto.mediaType,
+      fileName: dto.fileName
+    };
+
+    if (dto.mimeType) {
+      mediaData.mimeType = dto.mimeType;
+    }
+
+    if (dto.storagePath) {
+      mediaData.storagePath = dto.storagePath;
+    }
+
+    if (dto.publicUrl) {
+      mediaData.publicUrl = dto.publicUrl;
+    }
+
+    if (dto.sizeBytes !== undefined) {
+      mediaData.sizeBytes = dto.sizeBytes;
+    }
+
+    if (dto.message) {
+      mediaData.message = dto.message;
+    }
+
+    if (dto.metadata) {
+      mediaData.metadata = dto.metadata;
+    }
+
+    const media = await (this.prisma as PrismaWithTripMedia).tripMediaAttachment.create({
+      data: mediaData,
+      include: {
+        tripEvent: true
+      }
+    });
+
+    return {
+      tripId: trip.id,
+      tripCode: trip.tripCode,
+      event,
+      media
     };
   }
 

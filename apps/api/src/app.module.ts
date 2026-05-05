@@ -7,6 +7,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { DriversModule } from './modules/drivers/drivers.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { MembershipsModule } from './modules/memberships/memberships.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { TripsModule } from './modules/trips/trips.module';
@@ -25,6 +26,7 @@ import { ApiResponseInterceptor } from './common/interceptors/api-response.inter
     DriversModule,
     IntegrationsModule,
     MembershipsModule,
+    NotificationsModule,
     OrganizationsModule,
     TripsModule,
     VehiclesModule

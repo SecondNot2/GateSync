@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { TripEventType, TripStatus } from '@prisma/client';
 
-const eventStatusProjection: Partial<Record<TripEventType, TripStatus>> = {
+const eventStatusProjection: Partial<Record<string, TripStatus>> = {
   TRIP_CREATED: 'PLANNED',
   DEPARTED: 'IN_PROGRESS',
   ARRIVED_BORDER_AREA: 'AT_BORDER_GATE',
@@ -19,6 +19,7 @@ const eventStatusProjection: Partial<Record<TripEventType, TripStatus>> = {
   INSPECTION_COMPLETED: 'CUSTOMS_PROCESSING',
   FEE_PAID: 'CUSTOMS_PROCESSING',
   BORDER_GATE_EXIT_CONFIRMED: 'COMPLETED',
+  VEHICLE_RELEASED: 'COMPLETED',
   TRIP_CANCELLED: 'CANCELLED',
   TRIP_COMPLETED: 'COMPLETED'
 };

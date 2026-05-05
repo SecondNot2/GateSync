@@ -1,10 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  DeclarationStatus,
-  DeclarationType,
-  TripDirection,
-  TripEventType
-} from '@prisma/client';
+import type { DeclarationStatus, DeclarationType, TripDirection } from '@prisma/client';
 import type {
   CuaKhauSoDeclarationDetail,
   CuaKhauSoDeclarationDetailView,
@@ -93,6 +88,7 @@ export class CuaKhauSoMapper {
   ): CuaKhauSoDeclarationDetailView {
     const summary = this.mapSummary(detail);
     const arrivalAt = this.resolveArrivalAt(detail);
+    const transshipment = this.resolveTransshipment(detail);
 
     return {
       ...summary,
@@ -122,6 +118,7 @@ export class CuaKhauSoMapper {
       },
       infrastructureCharges: detail.infrastructureCharges ?? 0,
       transferCharges: detail.transferCharges ?? 0,
+      transshipment,
       vehicles: (detail.registrationTransportDetails ?? []).map((vehicle) =>
         this.mapVehicle(vehicle)
       ),
@@ -283,6 +280,34 @@ export class CuaKhauSoMapper {
       );
     }
 
+    const transshipment = this.resolveTransshipment(detail);
+
+    if (transshipment.eligible) {
+      this.addCandidate(
+        candidates,
+        organizationId,
+        detail,
+        'TRANSSHIPMENT_ELIGIBLE',
+        transshipment.eligibleAt,
+        'Cửa khẩu số ghi nhận xe đủ điều kiện ký sang tải.',
+        0.85,
+        'transshipment-eligible'
+      );
+    }
+
+    if (transshipment.signed) {
+      this.addCandidate(
+        candidates,
+        organizationId,
+        detail,
+        'TRANSSHIPMENT_SIGNED',
+        transshipment.signedAt,
+        'Cửa khẩu số ghi nhận đã ký/xác nhận sang tải.',
+        0.85,
+        'transshipment-signed'
+      );
+    }
+
     if (detail.confirmStartCheck && vehicle?.checkCustomsTime) {
       this.addCandidate(
         candidates,
@@ -351,7 +376,7 @@ export class CuaKhauSoMapper {
     candidates: CuaKhauSoEventCandidate[],
     organizationId: string,
     detail: CuaKhauSoDeclarationDetail,
-    eventType: TripEventType,
+    eventType: string,
     occurredAtValue: string | null | undefined,
     note: string,
     confidence: number,
@@ -474,6 +499,39 @@ export class CuaKhauSoMapper {
     return this.firstNonEmpty(payment?.actionTime, payment?.tollDate, payment?.paymentDate);
   }
 
+  private resolveTransshipment(detail: CuaKhauSoDeclarationDetail) {
+    const vehicle = detail.registrationTransportDetails?.[0];
+    const licenseForm = detail.businessVehicleRegistrationForms?.[0];
+    const licenseNumber = this.nonEmpty(licenseForm?.internationalTransportationLicenseNumber);
+    const licenseRegistered = Boolean(licenseForm && licenseNumber);
+    const vehicleInParking = Boolean(vehicle?.confirmInParkingCustoms);
+    const transportLicenseConfirmed = Boolean(vehicle?.confirmTransportLicense);
+    const eligible = vehicleInParking && licenseRegistered && transportLicenseConfirmed;
+    const signed = eligible && Boolean(vehicle?.checkChangeVehicle);
+    const eligibleAt = this.latestIsoString(
+      vehicle?.confirmInParkingCustomsTime,
+      vehicle?.confirmTransportLicenseTime
+    );
+    const signedAt = this.firstNonEmpty(vehicle?.checkChangeVehicleTime, eligibleAt);
+    const transshipment: CuaKhauSoDeclarationDetailView['transshipment'] = {
+      licenseRegistered,
+      transportLicenseConfirmed,
+      eligible,
+      signed,
+      licenseNumber: licenseNumber || 'Chưa cập nhật'
+    };
+
+    if (eligibleAt) {
+      transshipment.eligibleAt = eligibleAt;
+    }
+
+    if (signedAt) {
+      transshipment.signedAt = this.toIsoString(signedAt) ?? signedAt;
+    }
+
+    return transshipment;
+  }
+
   private mapDirection(value: unknown): TripDirection {
     if (value === 0) {
       return 'IMPORT';
@@ -539,6 +597,18 @@ export class CuaKhauSoMapper {
     }
 
     return date;
+  }
+
+  private latestIsoString(...values: Array<string | null | undefined>): string | undefined {
+    const dates = values
+      .map((value) => this.toDate(value))
+      .filter((value): value is Date => value !== undefined);
+
+    if (dates.length === 0) {
+      return undefined;
+    }
+
+    return new Date(Math.max(...dates.map((date) => date.getTime()))).toISOString();
   }
 
   private resolveListData(response: CuaKhauSoDeclarationListResponse): CuaKhauSoDeclarationLite[] {

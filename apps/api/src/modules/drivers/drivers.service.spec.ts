@@ -4,6 +4,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { RequestUser } from '../auth/request-user';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { TripsService } from '../trips/trips.service';
 import type { CreateDriverDto } from './dto/create-driver.dto';
 import { DriversService } from './drivers.service';
 
@@ -22,7 +23,7 @@ const requestUser: RequestUser = {
 };
 
 function createService(prisma: unknown): DriversService {
-  return new DriversService(prisma as PrismaService);
+  return new DriversService(prisma as PrismaService, {} as TripsService);
 }
 
 test('listDrivers only queries drivers inside the organization', async () => {
@@ -66,7 +67,10 @@ test('createDriver checks linked user is an active member before writing', async
     userId: 'user-2'
   };
 
-  await assert.rejects(async () => service.createDriver(requestUser, 'org-1', dto), BadRequestException);
+  await assert.rejects(
+    async () => service.createDriver(requestUser, 'org-1', dto),
+    BadRequestException
+  );
   assert.deepEqual(membershipFindWhere, {
     organizationId: 'org-1',
     userId: 'user-2',
@@ -105,5 +109,8 @@ test('createDriver rejects user already linked to another driver profile', async
     userId: 'user-2'
   };
 
-  await assert.rejects(async () => service.createDriver(requestUser, 'org-1', dto), ConflictException);
+  await assert.rejects(
+    async () => service.createDriver(requestUser, 'org-1', dto),
+    ConflictException
+  );
 });

@@ -1,9 +1,4 @@
-import type {
-  DeclarationStatus,
-  DeclarationType,
-  TripDirection,
-  TripEventType
-} from '@prisma/client';
+import type { DeclarationStatus, DeclarationType, TripDirection } from '@prisma/client';
 
 export type CuaKhauSoDirection = 'IMPORT' | 'EXPORT';
 export type CuaKhauSoListStatus = 1 | 2 | 3;
@@ -97,6 +92,7 @@ export type CuaKhauSoDeclarationDetail = CuaKhauSoDeclarationLite & {
   checkAllChangeVehicle?: boolean | null;
   registrationTransportDetails?: CuaKhauSoVehicleDetail[] | null;
   registrationTransportGoods?: CuaKhauSoGoodsGroup[] | null;
+  businessVehicleRegistrationForms?: CuaKhauSoBusinessVehicleRegistrationForm[] | null;
   changeVehicle?: CuaKhauSoChangeVehicleInfo | null;
 };
 
@@ -172,6 +168,9 @@ export type CuaKhauSoVehicleDetail = CuaKhauSoVehicleBrief & {
   checkCustomsTime?: string | null;
   checkChangeVehicle?: boolean | null;
   checkChangeVehicleTime?: string | null;
+  confirmTransportLicense?: boolean | null;
+  confirmTransportLicenseTime?: string | null;
+  confirmTransportLicenseNote?: string | null;
   confirmOutParkingCustoms?: boolean | null;
   confirmOutParkingCustomsTime?: string | null;
   confirmOutParkingBorderGuard?: boolean | null;
@@ -181,6 +180,16 @@ export type CuaKhauSoVehicleDetail = CuaKhauSoVehicleBrief & {
   confirmOutVN?: boolean | null;
   confirmOutVNTime?: string | null;
   shipmentStatus?: number | null;
+  [key: string]: unknown;
+};
+
+export type CuaKhauSoBusinessVehicleRegistrationForm = {
+  id?: string;
+  internationalTransportationLicenseNumber?: string | null;
+  registrationTransportId?: string | null;
+  registrationTransportDetailId?: string | null;
+  changeVehicleDetailId?: string | null;
+  vehicleRegistrationFormId?: string | null;
   [key: string]: unknown;
 };
 
@@ -257,6 +266,15 @@ export type CuaKhauSoDeclarationDetailView = CuaKhauSoDeclarationSummary & {
   };
   infrastructureCharges: number;
   transferCharges: number;
+  transshipment: {
+    licenseRegistered: boolean;
+    transportLicenseConfirmed: boolean;
+    eligible: boolean;
+    signed: boolean;
+    licenseNumber: string;
+    eligibleAt?: string;
+    signedAt?: string;
+  };
   vehicles: Array<{
     id?: string;
     plateNumber: string;
@@ -292,7 +310,7 @@ export type CuaKhauSoMappedList = {
 };
 
 export type CuaKhauSoEventCandidate = {
-  eventType: TripEventType;
+  eventType: string;
   occurredAt: string;
   sourceRef: string;
   idempotencyKey: string;
@@ -311,11 +329,11 @@ export type CuaKhauSoSyncResult = {
   linkedBy: 'requested' | 'declaration' | 'tripCode' | 'none';
   recordedEvents: Array<{
     id: string;
-    eventType: TripEventType;
+    eventType: string;
     occurredAt: string | Date;
   }>;
   skippedEvents: Array<{
-    eventType: TripEventType;
+    eventType: string;
     reason: string;
   }>;
   lastSyncAt: string;

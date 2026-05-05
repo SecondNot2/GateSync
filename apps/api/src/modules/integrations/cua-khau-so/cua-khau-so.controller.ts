@@ -45,6 +45,18 @@ export class CuaKhauSoController {
     return this.cuaKhauSoService.listDeclarations(user, organizationId, query);
   }
 
+  @Get('sync-runs')
+  @OrganizationPermissions('integrations:cua-khau-so:sync')
+  listSyncRuns(@Param('organizationId') organizationId: string) {
+    return this.cuaKhauSoService.listSyncRuns(organizationId);
+  }
+
+  @Post('sync-runs')
+  @OrganizationPermissions('integrations:cua-khau-so:sync')
+  runSyncNow(@CurrentUser() user: RequestUser, @Param('organizationId') organizationId: string) {
+    return this.cuaKhauSoService.runSyncNow(user, organizationId);
+  }
+
   @Get('declarations/:externalId')
   getDeclaration(
     @CurrentUser() user: RequestUser,

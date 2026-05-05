@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { UnauthorizedException } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
 import type { RequestUser } from '../../auth/request-user';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { TripsService } from '../../trips/trips.service';
@@ -48,6 +49,9 @@ function createService(params: {
 }) {
   return new CuaKhauSoService(
     params.prisma as PrismaService,
+    {
+      get: () => undefined
+    } as unknown as ConfigService,
     params.client as CuaKhauSoClient,
     new CuaKhauSoMapper(),
     params.sessionStore ?? new CuaKhauSoSessionStore(),
@@ -96,7 +100,11 @@ test('connect stores a server-side Cửa khẩu số session without returning s
 
 test('listDeclarations requires a server-side source session', async () => {
   const service = createService({
-    prisma: {},
+    prisma: {
+      integrationAccount: {
+        findFirst: async () => null
+      }
+    },
     client: {}
   });
 

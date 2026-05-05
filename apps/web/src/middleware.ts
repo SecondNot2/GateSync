@@ -34,6 +34,7 @@ export const config = {
     '/signup',
     '/onboarding/:path*',
     '/dashboard/:path*',
+    '/driver/:path*',
     '/trips/:path*',
     '/admin/:path*',
     '/integrations/:path*'

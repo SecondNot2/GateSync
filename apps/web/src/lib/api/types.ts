@@ -2,6 +2,7 @@ import type {
   MembershipRole,
   MembershipInvitationStatus,
   MembershipStatus,
+  IntegrationSyncRunStatus,
   OrganizationType,
   OwnershipType,
   TripDirection,
@@ -9,6 +10,7 @@ import type {
   TripEventStatus,
   TripEventType,
   TripExceptionFilter,
+  TripMediaType,
   TripParticipantRole,
   TripStatus,
   TripType,
@@ -407,6 +409,32 @@ export type ApiCuaKhauSoSyncResult = {
   lastSyncAt: string;
 };
 
+export type ApiIntegrationSyncRun = {
+  id: string;
+  organizationId: string;
+  integrationAccountId: string;
+  status: IntegrationSyncRunStatus;
+  mode: 'AUTO' | 'MANUAL';
+  startedAt: string;
+  finishedAt?: string | null;
+  recordsFetched: number;
+  detailsFetched: number;
+  eventsCreated: number;
+  eventsSkipped: number;
+  errorMessage?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type ApiCuaKhauSoSyncRunResult = {
+  syncRunId: string;
+  recordsFetched: number;
+  detailsFetched: number;
+  eventsCreated: number;
+  eventsSkipped: number;
+  failedDeclarations: number;
+  syncedDeclarations: string[];
+};
+
 export type ListTripsParams = {
   search?: string;
   status?: TripStatus;
@@ -428,6 +456,43 @@ export type CreateTripEventPayload = {
   source?: TripEventSource;
   sourceRef?: string;
   note?: string;
+};
+
+export type ApiTripMediaAttachment = {
+  id: string;
+  organizationId: string;
+  tripId: string;
+  tripEventId: string;
+  uploadedById?: string | null;
+  mediaType: TripMediaType;
+  fileName: string;
+  mimeType?: string | null;
+  storagePath?: string | null;
+  publicUrl?: string | null;
+  sizeBytes?: number | null;
+  message?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt?: string;
+  tripEvent?: ApiTripEvent;
+};
+
+export type CreateDriverTripMediaPayload = {
+  mediaType: TripMediaType;
+  fileName: string;
+  mimeType?: string;
+  storagePath?: string;
+  publicUrl?: string;
+  sizeBytes?: number;
+  message?: string;
+  occurredAt?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type ApiDriverTripMediaResult = {
+  tripId: string;
+  tripCode: string;
+  event: ApiTripEvent;
+  media: ApiTripMediaAttachment;
 };
 
 export type CreateVehiclePayload = {

@@ -19,6 +19,7 @@ import {
 } from '@gatesync/shared';
 import type {
   ApiCurrentUser,
+  ApiIntegrationSyncRun,
   ApiDashboardSummary,
   ApiCuaKhauSoDeclarationList,
   ApiCuaKhauSoSession,
@@ -175,6 +176,7 @@ export type CuaKhauSoViewData = {
   organization: OperationsOrganizationContext;
   session: ApiCuaKhauSoSession;
   declarations: ApiCuaKhauSoDeclarationList;
+  syncRuns: ApiIntegrationSyncRun[];
   notice?: string;
 };
 

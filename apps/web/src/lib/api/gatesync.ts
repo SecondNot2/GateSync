@@ -1,12 +1,15 @@
 import { apiClient } from '@/lib/api/client';
 import type {
   ApiCurrentUser,
+  ApiCuaKhauSoSyncRunResult,
   ApiDriverProfile,
+  ApiDriverTripMediaResult,
   ApiCuaKhauSoDeclarationDetail,
   ApiCuaKhauSoDeclarationList,
   ApiCuaKhauSoSession,
   ApiCuaKhauSoSyncResult,
   ApiDashboardSummary,
+  ApiIntegrationSyncRun,
   ApiMembership,
   ApiMembershipInvitation,
   ApiOrganization,
@@ -17,6 +20,7 @@ import type {
   AcceptMembershipInvitationPayload,
   CreateOrganizationPayload,
   CreateDriverPayload,
+  CreateDriverTripMediaPayload,
   CuaKhauSoLoginPayload,
   CreateTripEventPayload,
   CreateVehiclePayload,
@@ -165,6 +169,23 @@ export const gatesyncApi = {
       }
     ),
 
+  listCuaKhauSoSyncRuns: (organizationId: string, { accessToken }: AuthenticatedOptions) =>
+    apiClient.get<ApiIntegrationSyncRun[]>(
+      `/organizations/${organizationId}/integrations/cua-khau-so/sync-runs`,
+      {
+        accessToken
+      }
+    ),
+
+  runCuaKhauSoSyncNow: (organizationId: string, { accessToken }: AuthenticatedOptions) =>
+    apiClient.post<ApiCuaKhauSoSyncRunResult>(
+      `/organizations/${organizationId}/integrations/cua-khau-so/sync-runs`,
+      {},
+      {
+        accessToken
+      }
+    ),
+
   listVehicles: (organizationId: string, { accessToken }: AuthenticatedOptions) =>
     apiClient.get<ApiVehicle[]>(`/organizations/${organizationId}/vehicles`, {
       accessToken
@@ -234,6 +255,20 @@ export const gatesyncApi = {
       `/organizations/${organizationId}/drivers/${driverProfileId}`,
       { accessToken }
     ),
+
+  listMyDriverTrips: ({ accessToken }: AuthenticatedOptions) =>
+    apiClient.get<ApiTripSummary[]>('/me/driver/trips', {
+      accessToken
+    }),
+
+  createMyDriverTripMedia: (
+    tripId: string,
+    payload: CreateDriverTripMediaPayload,
+    { accessToken }: AuthenticatedOptions
+  ) =>
+    apiClient.post<ApiDriverTripMediaResult>(`/me/driver/trips/${tripId}/media`, payload, {
+      accessToken
+    }),
 
   getDashboardSummary: (organizationId: string, { accessToken }: AuthenticatedOptions) =>
     apiClient.get<ApiDashboardSummary>(`/organizations/${organizationId}/dashboard/summary`, {

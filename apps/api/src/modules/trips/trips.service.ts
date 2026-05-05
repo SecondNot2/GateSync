@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { RequestUser } from '../auth/request-user';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateTripEventDto } from './dto/create-trip-event.dto';
 import type { CreateTripDto } from './dto/create-trip.dto';
@@ -49,27 +50,6 @@ const tripEventPublicSelect = {
     }
   }
 } satisfies Prisma.TripEventSelect;
-
-const notificationEventTypes = [
-  'DEPARTED',
-  'ARRIVED_BORDER_AREA',
-  'WAITING_YARD_ENTRY',
-  'YARD_ENTRY_CONFIRMED',
-  'YARD_EXIT_CONFIRMED',
-  'DECLARATION_REJECTED',
-  'INSPECTION_REQUIRED',
-  'BORDER_GATE_EXIT_CONFIRMED',
-  'TRIP_COMPLETED',
-  'TRIP_CANCELLED'
-] as const;
-
-const notificationRecipientRoles = [
-  'OWNER',
-  'ADMIN',
-  'DISPATCHER',
-  'DOCUMENT_STAFF',
-  'FIELD_OPERATOR'
-] as const;
 
 const tripSummaryInclude = {
   vehicle: true,
@@ -171,6 +151,7 @@ const tripDetailInclude = {
 export class TripsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
     @Inject(TripOperationsService) private readonly operations: TripOperationsService,
     @Inject(TripStateTransitionService) private readonly transitions: TripStateTransitionService
   ) {}
@@ -448,6 +429,25 @@ export class TripsService {
     dto: CreateTripEventDto,
     idempotencyKeyHeader?: string
   ) {
+    return this.createEventForActor(user, organizationId, tripId, dto, idempotencyKeyHeader);
+  }
+
+  async createSystemEvent(
+    organizationId: string,
+    tripId: string,
+    dto: CreateTripEventDto,
+    idempotencyKeyHeader?: string
+  ) {
+    return this.createEventForActor(undefined, organizationId, tripId, dto, idempotencyKeyHeader);
+  }
+
+  private async createEventForActor(
+    user: RequestUser | undefined,
+    organizationId: string,
+    tripId: string,
+    dto: CreateTripEventDto,
+    idempotencyKeyHeader?: string
+  ) {
     if (dto.eventType === 'TRIP_CREATED') {
       throw new BadRequestException('TRIP_CREATED is generated only when a trip is created.');
     }
@@ -504,7 +504,7 @@ export class TripsService {
         await tx.auditLog.create({
           data: {
             organizationId,
-            actorUserId: user.id,
+            actorUserId: user?.id ?? null,
             action: 'trip_event.create',
             entityType: 'TripEvent',
             entityId: event.id,
@@ -731,7 +731,7 @@ export class TripsService {
   }
 
   private toTripEventCreateData(
-    user: RequestUser,
+    user: RequestUser | undefined,
     organizationId: string,
     tripId: string,
     dto: CreateTripEventDto,
@@ -743,9 +743,12 @@ export class TripsService {
       eventType: dto.eventType,
       eventStatus: 'RECORDED',
       source: dto.source ?? 'MANUAL',
-      occurredAt: new Date(dto.occurredAt),
-      createdById: user.id
+      occurredAt: new Date(dto.occurredAt)
     };
+
+    if (user) {
+      data.createdById = user.id;
+    }
 
     if (idempotencyKey) {
       data.idempotencyKey = idempotencyKey;
@@ -777,44 +780,13 @@ export class TripsService {
     event: { id: string; eventType: string; occurredAt: Date },
     currentStatus: string
   ) {
-    if (!notificationEventTypes.some((eventType) => eventType === event.eventType)) {
-      return;
-    }
-
-    const memberships = await prisma.membership.findMany({
-      where: {
-        organizationId,
-        status: 'ACTIVE',
-        role: {
-          in: [...notificationRecipientRoles]
-        }
-      },
-      select: {
-        userId: true
-      }
-    });
-    const recipientUserIds = [...new Set(memberships.map((membership) => membership.userId))];
-
-    if (recipientUserIds.length === 0) {
-      return;
-    }
-
-    await prisma.notification.createMany({
-      data: recipientUserIds.map((recipientUserId) => ({
-        organizationId,
-        tripId,
-        recipientUserId,
-        channel: 'IN_APP',
-        status: 'PENDING',
-        payload: {
-          kind: 'trip_event',
-          eventId: event.id,
-          eventType: event.eventType,
-          currentStatus,
-          occurredAt: event.occurredAt.toISOString()
-        }
-      }))
-    });
+    await this.notifications.createTripEventNotifications(
+      prisma,
+      organizationId,
+      tripId,
+      event,
+      currentStatus
+    );
   }
 
   private normalizeIdempotencyKey(value: string | undefined): string | undefined {

@@ -90,6 +90,15 @@ export const tripEventTypes = [
   'INSPECTION_COMPLETED',
   'FEE_PAID',
   'BORDER_GATE_EXIT_CONFIRMED',
+  'TRANSSHIPMENT_ELIGIBLE',
+  'TRANSSHIPMENT_SIGNED',
+  'TRANSSHIPMENT_STARTED',
+  'TRANSSHIPMENT_COMPLETED',
+  'DRIVER_LOCATION_SHARED',
+  'DRIVER_MEDIA_UPLOADED',
+  'RELEASE_READY',
+  'RELEASE_REQUESTED',
+  'VEHICLE_RELEASED',
   'PROOF_IMAGE_UPLOADED',
   'DRIVER_NOTE_ADDED',
   'TRIP_CANCELLED',
@@ -134,7 +143,18 @@ export const integrationProviders = [
   'MOCK'
 ] as const;
 
-export const notificationChannels = ['EMAIL', 'IN_APP', 'ZALO_OA', 'SMS', 'WEBHOOK'] as const;
+export const notificationChannels = [
+  'EMAIL',
+  'IN_APP',
+  'WEB_PUSH',
+  'ZALO_OA',
+  'SMS',
+  'WEBHOOK'
+] as const;
+
+export const integrationSyncRunStatuses = ['RUNNING', 'SUCCEEDED', 'FAILED', 'PARTIAL'] as const;
+
+export const tripMediaTypes = ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'OTHER'] as const;
 
 export const organizationPermissions = [
   'organizations:read',
@@ -166,6 +186,8 @@ export type TripEventSource = (typeof tripEventSources)[number];
 export type TripExceptionFilter = (typeof tripExceptionFilters)[number];
 export type IntegrationProvider = (typeof integrationProviders)[number];
 export type NotificationChannel = (typeof notificationChannels)[number];
+export type IntegrationSyncRunStatus = (typeof integrationSyncRunStatuses)[number];
+export type TripMediaType = (typeof tripMediaTypes)[number];
 export type OrganizationPermission = (typeof organizationPermissions)[number];
 
 export const rolePermissions = {

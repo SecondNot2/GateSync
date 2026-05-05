@@ -126,6 +126,7 @@ export function getDevCuaKhauSoData(
       totalPage: declarations.length > 0 ? 1 : 0,
       message: 'Dữ liệu mẫu Cửa khẩu số chỉ dùng để xem giao diện.'
     },
+    syncRuns: [],
     notice: `Đang dùng dữ liệu mẫu cục bộ: ${reason}`
   };
 }

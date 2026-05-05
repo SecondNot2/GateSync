@@ -6,6 +6,7 @@ export const signupPath = '/signup';
 export const protectedPathPrefixes = [
   onboardingPath,
   '/dashboard',
+  '/driver',
   '/trips',
   '/admin',
   '/integrations'
