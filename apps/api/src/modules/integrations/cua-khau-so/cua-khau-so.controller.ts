@@ -51,6 +51,11 @@ export class CuaKhauSoController {
     return this.cuaKhauSoService.listSyncRuns(organizationId);
   }
 
+  @Get('health')
+  getHealth(@Param('organizationId') organizationId: string) {
+    return this.cuaKhauSoService.getHealth(organizationId);
+  }
+
   @Post('sync-runs')
   @OrganizationPermissions('integrations:cua-khau-so:sync')
   runSyncNow(@CurrentUser() user: RequestUser, @Param('organizationId') organizationId: string) {

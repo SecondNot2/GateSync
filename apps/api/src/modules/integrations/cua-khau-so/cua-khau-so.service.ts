@@ -12,6 +12,7 @@ import type {
   DeclarationType,
   IntegrationAccount,
   Prisma,
+  TripStatus,
   TripDirection,
   TripType
 } from '@prisma/client';
@@ -27,6 +28,7 @@ import type { ListCuaKhauSoDeclarationsQueryDto } from './dto/list-cua-khau-so-d
 import type { SyncCuaKhauSoDeclarationDto } from './dto/sync-cua-khau-so-declaration.dto';
 import type {
   CuaKhauSoDeclarationDetail,
+  CuaKhauSoDeclarationDetailView,
   CuaKhauSoDeclarationSummary,
   CuaKhauSoListStatus,
   CuaKhauSoPageSize
@@ -38,6 +40,7 @@ type LinkedTrip = {
   customsDeclarationId: string | null;
   vehicleId: string | null;
   driverProfileId: string | null;
+  currentStatus: TripStatus;
 };
 type TripSourceAssignment = {
   vehicleId?: string;
@@ -54,6 +57,14 @@ type CustomsDeclarationSyncData = {
   approvedAt?: Date;
   rejectedAt?: Date;
 };
+type CustomsDeclarationSourceWriteData = {
+  externalId: string;
+  normalizedSummary: CuaKhauSoDeclarationSummary;
+  sourceSnapshot: CuaKhauSoDeclarationDetailView;
+  sourceObservedAt: Date;
+  sourceUpdatedAt: Date;
+  syncRunId?: string;
+};
 type StoredCuaKhauSoCredentials = {
   username: string;
   password: string;
@@ -63,10 +74,47 @@ type SourceSession = {
   refreshCookies: string[];
   username: string;
 };
+type SyncRunMode = 'AUTO' | 'MANUAL' | 'REFRESH_ON_OPEN';
+type OrganizationSyncResult = {
+  recordsFetched: number;
+  detailsFetched: number;
+  eventsCreated: number;
+  eventsSkipped: number;
+  failedDeclarations: number;
+  syncedDeclarations: string[];
+  lastObservedAt?: Date;
+};
+type AccountSyncRunResult = OrganizationSyncResult & {
+  skipped: boolean;
+  syncRunId?: string;
+};
+type MirrorDeclarationRecord = {
+  id: string;
+  declarationNumber: string;
+  declarationType: DeclarationType;
+  customsOfficeCode: string | null;
+  status: DeclarationStatus;
+  sourceExternalId: string | null;
+  sourceStatus: string | null;
+  sourceUpdatedAt: Date | null;
+  sourceObservedAt: Date | null;
+  lastIngestedAt: Date | null;
+  latestSyncRunId: string | null;
+  normalizedSummary: Prisma.JsonValue | null;
+  sourceSnapshot: Prisma.JsonValue | null;
+  submittedAt: Date | null;
+  approvedAt: Date | null;
+  rejectedAt: Date | null;
+  trips: Array<{
+    id: string;
+    tripCode: string;
+    currentStatus: TripStatus;
+  }>;
+};
 type IntegrationSyncRunDelegate = {
   create(args: { data: Record<string, unknown> }): Promise<{ id: string }>;
   update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
-  findMany(args: Record<string, unknown>): Promise<unknown>;
+  findMany(args: Record<string, unknown>): Promise<Array<Record<string, unknown>>>;
 };
 type PrismaWithIntegrationSyncRun = PrismaService & {
   integrationSyncRun: IntegrationSyncRunDelegate;
@@ -76,9 +124,16 @@ const integrationDisplayName = 'Cửa khẩu số';
 const localCredentialSecret = 'gatesync-local-development-secret';
 const defaultRecentWindowDays = 7;
 const filteredListPageSize: CuaKhauSoPageSize = 100;
+const terminalTripStatuses: readonly TripStatus[] = ['COMPLETED', 'CANCELLED'];
+const defaultRefreshThrottleMs = 60_000;
+const defaultStaleAfterMs = 2 * 60_000;
+const defaultLeaseMs = 3 * 60_000;
+const maxBackoffMs = 30 * 60_000;
 
 @Injectable()
 export class CuaKhauSoService {
+  private readonly workerId = `cks-worker-${process.pid}-${randomBytes(4).toString('hex')}`;
+
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(ConfigService) private readonly configService: ConfigService,
@@ -137,7 +192,9 @@ export class CuaKhauSoService {
         organizationId,
         provider: 'CUA_KHAU_SO',
         displayName: integrationDisplayName,
-        status: 'ACTIVE',
+        status: {
+          in: ['ACTIVE', 'ERROR']
+        },
         deletedAt: null,
         encryptedCredentials: {
           not: null
@@ -162,18 +219,28 @@ export class CuaKhauSoService {
     organizationId: string,
     query: ListCuaKhauSoDeclarationsQueryDto
   ) {
-    const session = await this.getSourceSession(user, organizationId);
-    const result = await this.fetchFilteredDeclarationList(session, query);
-    this.sessionStore.touch(organizationId, user.id, session);
-    return result;
+    void this.refreshOnOpenIfStale(user, organizationId);
+    return this.listMirrorDeclarations(organizationId, query);
   }
 
   async getDeclaration(user: RequestUser, organizationId: string, externalId: string) {
+    const mirrored = await this.getMirrorDeclarationDetail(organizationId, externalId);
+
+    if (mirrored) {
+      return mirrored;
+    }
+
     const detail = await this.fetchDeclarationDetail(user, organizationId, externalId);
     return this.mapper.mapDetail(detail, organizationId);
   }
 
   async getProcedureSteps(user: RequestUser, organizationId: string, externalId: string) {
+    const mirrored = await this.getMirrorDeclarationDetail(organizationId, externalId);
+
+    if (mirrored) {
+      return mirrored.procedureSteps;
+    }
+
     const detail = await this.fetchDeclarationDetail(user, organizationId, externalId);
     return this.mapper.deriveProcedureSteps(detail);
   }
@@ -193,56 +260,23 @@ export class CuaKhauSoService {
       externalId,
       detail,
       account,
+      undefined,
       dto.tripId
     );
   }
 
   async runSyncNow(user: RequestUser, organizationId: string) {
     const account = await this.getConnectedAccount(organizationId);
-    const syncRun = await this.syncRuns.create({
-      data: {
-        organizationId,
-        integrationAccountId: account.id,
-        mode: 'MANUAL'
-      }
-    });
+    const throttleMs =
+      this.configService.get<number>('CUA_KHAU_SO_REFRESH_THROTTLE_MS') ?? defaultRefreshThrottleMs;
 
-    try {
-      const result = await this.syncOrganizationAccount(account, user);
-
-      await this.syncRuns.update({
-        where: {
-          id: syncRun.id
-        },
-        data: {
-          status: result.failedDeclarations > 0 ? 'PARTIAL' : 'SUCCEEDED',
-          finishedAt: new Date(),
-          recordsFetched: result.recordsFetched,
-          detailsFetched: result.detailsFetched,
-          eventsCreated: result.eventsCreated,
-          eventsSkipped: result.eventsSkipped,
-          metadata: result as unknown as Prisma.InputJsonValue
-        }
-      });
-
-      return {
-        syncRunId: syncRun.id,
-        ...result
-      };
-    } catch (error) {
-      await this.syncRuns.update({
-        where: {
-          id: syncRun.id
-        },
-        data: {
-          status: 'FAILED',
-          finishedAt: new Date(),
-          errorMessage: error instanceof Error ? error.message : 'Không thể đồng bộ Cửa khẩu số.'
-        }
-      });
-
-      throw error;
+    if (await this.hasRecentSyncRun(account.id, throttleMs)) {
+      throw new BadRequestException(
+        'GateSync vừa kiểm tra nguồn Cửa khẩu số, vui lòng thử lại sau.'
+      );
     }
+
+    return this.runAccountSync(account, 'MANUAL', user);
   }
 
   listSyncRuns(organizationId: string) {
@@ -257,75 +291,56 @@ export class CuaKhauSoService {
     });
   }
 
+  async getHealth(organizationId: string) {
+    return this.resolveHealth(organizationId);
+  }
+
   async pollActiveAccounts() {
     const accounts = await this.prisma.integrationAccount.findMany({
       where: {
         provider: 'CUA_KHAU_SO',
         displayName: integrationDisplayName,
-        status: 'ACTIVE',
+        status: {
+          in: ['ACTIVE', 'ERROR']
+        },
         deletedAt: null,
         encryptedCredentials: {
           not: null
-        }
+        },
+        OR: [
+          {
+            nextRetryAt: null
+          },
+          {
+            nextRetryAt: {
+              lte: new Date()
+            }
+          }
+        ]
       }
     });
     const results = [] as Array<{ organizationId: string; syncRunId?: string; status: string }>;
 
     for (const account of accounts) {
-      const syncRun = await this.syncRuns.create({
-        data: {
-          organizationId: account.organizationId,
-          integrationAccountId: account.id,
-          mode: 'AUTO'
-        }
-      });
-
       try {
-        const result = await this.syncOrganizationAccount(account);
+        const result = await this.runAccountSync(account, 'AUTO');
+        const syncResult: { organizationId: string; syncRunId?: string; status: string } = {
+          organizationId: account.organizationId,
+          status: result.skipped
+            ? 'SKIPPED'
+            : result.failedDeclarations > 0
+              ? 'PARTIAL'
+              : 'SUCCEEDED'
+        };
 
-        await this.syncRuns.update({
-          where: {
-            id: syncRun.id
-          },
-          data: {
-            status: result.failedDeclarations > 0 ? 'PARTIAL' : 'SUCCEEDED',
-            finishedAt: new Date(),
-            recordsFetched: result.recordsFetched,
-            detailsFetched: result.detailsFetched,
-            eventsCreated: result.eventsCreated,
-            eventsSkipped: result.eventsSkipped,
-            metadata: result as unknown as Prisma.InputJsonValue
-          }
-        });
+        if (result.syncRunId) {
+          syncResult.syncRunId = result.syncRunId;
+        }
 
+        results.push(syncResult);
+      } catch {
         results.push({
           organizationId: account.organizationId,
-          syncRunId: syncRun.id,
-          status: result.failedDeclarations > 0 ? 'PARTIAL' : 'SUCCEEDED'
-        });
-      } catch (error) {
-        await this.prisma.integrationAccount.update({
-          where: {
-            id: account.id
-          },
-          data: {
-            status: 'ERROR'
-          }
-        });
-        await this.syncRuns.update({
-          where: {
-            id: syncRun.id
-          },
-          data: {
-            status: 'FAILED',
-            finishedAt: new Date(),
-            errorMessage: error instanceof Error ? error.message : 'Không thể đồng bộ Cửa khẩu số.'
-          }
-        });
-
-        results.push({
-          organizationId: account.organizationId,
-          syncRunId: syncRun.id,
           status: 'FAILED'
         });
       }
@@ -337,18 +352,588 @@ export class CuaKhauSoService {
     };
   }
 
+  private async listMirrorDeclarations(
+    organizationId: string,
+    query: ListCuaKhauSoDeclarationsQueryDto
+  ) {
+    const pageNumber = query.pageNumber ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const from =
+      this.parseDate(query.from) ??
+      (!query.to && !query.keyword && (!query.status || query.status === 1)
+        ? this.getDefaultRecentFromDate()
+        : undefined);
+    const to = this.parseDate(query.to);
+
+    if (from && to && from > to) {
+      throw new BadRequestException('From date must be before to date.');
+    }
+
+    const where: Prisma.CustomsDeclarationWhereInput = {
+      organizationId,
+      sourceProvider: 'CUA_KHAU_SO'
+    };
+
+    if (query.status === 1 || query.status === undefined) {
+      where.status = {
+        notIn: ['APPROVED', 'CANCELLED']
+      };
+    } else if (query.status === 2) {
+      where.status = 'APPROVED';
+    } else if (query.status === 3) {
+      where.status = 'CANCELLED';
+    }
+
+    if (query.direction) {
+      where.declarationType = query.direction;
+    }
+
+    if (from || to) {
+      where.submittedAt = {
+        ...(from ? { gte: from } : {}),
+        ...(to ? { lte: to } : {})
+      };
+    }
+
+    const maxRecords = Math.max(
+      pageNumber * pageSize,
+      this.configService.get<number>('CUA_KHAU_SO_MIRROR_MAX_RECORDS') ?? 1000
+    );
+    const records = (await this.prisma.customsDeclaration.findMany({
+      where,
+      include: {
+        trips: {
+          select: {
+            id: true,
+            tripCode: true,
+            currentStatus: true
+          }
+        }
+      },
+      orderBy: [
+        {
+          sourceObservedAt: 'desc'
+        },
+        {
+          submittedAt: 'desc'
+        },
+        {
+          createdAt: 'desc'
+        }
+      ],
+      take: maxRecords
+    })) as unknown as MirrorDeclarationRecord[];
+    const keyword = query.keyword?.trim();
+    const filtered = keyword
+      ? records.filter((record) => this.matchesMirrorKeyword(record, keyword))
+      : records;
+    const startIndex = (pageNumber - 1) * pageSize;
+    const totalPage = filtered.length > 0 ? Math.ceil(filtered.length / pageSize) : 0;
+
+    return {
+      declarations: filtered.slice(startIndex, startIndex + pageSize).map((record) => ({
+        ...this.toMirrorSummary(record),
+        sourceObservedAt: record.sourceObservedAt?.toISOString(),
+        lastIngestedAt: record.lastIngestedAt?.toISOString(),
+        linkedTripId: record.trips[0]?.id,
+        linkedTripCode: record.trips[0]?.tripCode
+      })),
+      totalCount: filtered.length,
+      totalPage,
+      message: this.buildMirrorListMessage(from, to, query.status)
+    };
+  }
+
+  private async getMirrorDeclarationDetail(
+    organizationId: string,
+    externalId: string
+  ): Promise<CuaKhauSoDeclarationDetailView | undefined> {
+    const record = (await this.prisma.customsDeclaration.findFirst({
+      where: {
+        organizationId,
+        sourceProvider: 'CUA_KHAU_SO',
+        OR: [
+          {
+            sourceExternalId: externalId
+          },
+          {
+            declarationNumber: externalId
+          }
+        ]
+      },
+      include: {
+        trips: {
+          select: {
+            id: true,
+            tripCode: true,
+            currentStatus: true
+          }
+        }
+      }
+    })) as MirrorDeclarationRecord | null;
+
+    if (!record) {
+      return undefined;
+    }
+
+    const snapshot = this.toMirrorDetailView(record.sourceSnapshot);
+
+    if (snapshot) {
+      return {
+        ...snapshot,
+        externalId: record.sourceExternalId ?? snapshot.externalId,
+        declarationNumber: record.declarationNumber
+      };
+    }
+
+    return this.toFallbackMirrorDetail(record);
+  }
+
+  private matchesMirrorKeyword(record: MirrorDeclarationRecord, keyword: string) {
+    const normalizedKeyword = keyword.toLowerCase();
+    const summary = this.toMirrorSummary(record);
+    const values = [
+      record.declarationNumber,
+      record.sourceExternalId,
+      summary.gateName,
+      summary.gateCode,
+      summary.companyGoodsName,
+      summary.plateNumber,
+      summary.trailerNumber,
+      summary.changePlateNumber,
+      record.trips[0]?.tripCode
+    ];
+
+    return values.some((value) => value?.toLowerCase().includes(normalizedKeyword));
+  }
+
+  private toMirrorSummary(record: MirrorDeclarationRecord): CuaKhauSoDeclarationSummary {
+    const normalizedSummary = this.toMirrorSummaryValue(record.normalizedSummary);
+
+    if (normalizedSummary) {
+      return {
+        ...normalizedSummary,
+        externalId: record.sourceExternalId ?? normalizedSummary.externalId,
+        declarationNumber: record.declarationNumber,
+        declarationType: record.declarationType,
+        direction: this.toTripDirection(record.declarationType),
+        status: record.status,
+        statusLabel: this.toDeclarationStatusLabel(record.status),
+        completed: record.status === 'APPROVED'
+      };
+    }
+
+    const summary: CuaKhauSoDeclarationSummary = {
+      externalId: record.sourceExternalId ?? record.declarationNumber,
+      declarationNumber: record.declarationNumber,
+      direction: this.toTripDirection(record.declarationType),
+      declarationType: record.declarationType,
+      status: record.status,
+      statusLabel: this.toDeclarationStatusLabel(record.status),
+      gateName: record.customsOfficeCode ?? 'Chưa cập nhật',
+      companyGoodsName: 'Chưa cập nhật',
+      plateNumber: 'Chưa cập nhật',
+      trailerNumber: 'Chưa cập nhật',
+      changePlateNumber: 'Chưa cập nhật',
+      completed: record.status === 'APPROVED',
+      paymentStatus: record.status === 'APPROVED' ? 'Đã thanh toán' : 'Chưa có thông tin thanh toán'
+    };
+
+    if (record.submittedAt) {
+      summary.createdAt = record.submittedAt.toISOString();
+    }
+
+    return summary;
+  }
+
+  private toMirrorSummaryValue(value: Prisma.JsonValue | null) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+
+    const candidate = value as Partial<CuaKhauSoDeclarationSummary>;
+
+    if (!candidate.externalId || !candidate.declarationNumber) {
+      return undefined;
+    }
+
+    return candidate as CuaKhauSoDeclarationSummary;
+  }
+
+  private toMirrorDetailView(value: Prisma.JsonValue | null) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+
+    const candidate = value as Partial<CuaKhauSoDeclarationDetailView>;
+
+    if (!candidate.externalId || !candidate.declarationNumber) {
+      return undefined;
+    }
+
+    return candidate as CuaKhauSoDeclarationDetailView;
+  }
+
+  private toFallbackMirrorDetail(record: MirrorDeclarationRecord): CuaKhauSoDeclarationDetailView {
+    return {
+      ...this.toMirrorSummary(record),
+      borderGuardDeclarationNumber: record.declarationNumber,
+      arrivalAt: record.submittedAt?.toISOString() ?? 'Chưa cập nhật',
+      feePayingCompany: {
+        name: 'Chưa cập nhật',
+        taxCode: 'Chưa cập nhật',
+        address: 'Chưa cập nhật',
+        phone: 'Chưa cập nhật'
+      },
+      parkingPlace: {
+        name: 'Chưa cập nhật',
+        address: 'Chưa cập nhật',
+        description: 'Chưa cập nhật'
+      },
+      infrastructureCharges: 0,
+      transferCharges: 0,
+      transshipment: {
+        licenseRegistered: false,
+        transportLicenseConfirmed: false,
+        eligible: false,
+        signed: false,
+        licenseNumber: 'Chưa cập nhật'
+      },
+      vehicles: [],
+      goods: [],
+      procedureSteps: [],
+      eventCandidates: []
+    };
+  }
+
+  private buildMirrorListMessage(
+    from: Date | undefined,
+    to: Date | undefined,
+    status: CuaKhauSoListStatus | undefined
+  ) {
+    return this.buildFilteredListMessage(
+      'Đang hiển thị bản sao nội bộ GateSync từ Cửa khẩu số.',
+      from,
+      to,
+      status
+    );
+  }
+
+  private toDeclarationStatusLabel(status: DeclarationStatus) {
+    if (status === 'APPROVED') {
+      return 'Hoàn thành';
+    }
+
+    if (status === 'CANCELLED') {
+      return 'Đã hủy';
+    }
+
+    if (status === 'REJECTED') {
+      return 'Bị từ chối';
+    }
+
+    return 'Chưa hoàn thành';
+  }
+
+  private async refreshOnOpenIfStale(user: RequestUser, organizationId: string) {
+    try {
+      const account = await this.getConnectedAccount(organizationId);
+      const staleAfterMs =
+        this.configService.get<number>('CUA_KHAU_SO_STALE_AFTER_MS') ?? defaultStaleAfterMs;
+      const throttleMs =
+        this.configService.get<number>('CUA_KHAU_SO_REFRESH_THROTTLE_MS') ??
+        defaultRefreshThrottleMs;
+      const lastSuccessfulSyncAt = account.lastSuccessfulSyncAt ?? account.lastSyncAt;
+      const isStale =
+        !lastSuccessfulSyncAt || Date.now() - lastSuccessfulSyncAt.getTime() > staleAfterMs;
+
+      if (!isStale || (await this.hasRecentSyncRun(account.id, throttleMs))) {
+        return;
+      }
+
+      await this.runAccountSync(account, 'REFRESH_ON_OPEN', user);
+    } catch {
+      return;
+    }
+  }
+
+  private async runAccountSync(
+    account: Pick<IntegrationAccount, 'id' | 'organizationId' | 'encryptedCredentials'>,
+    mode: SyncRunMode,
+    user?: RequestUser
+  ): Promise<AccountSyncRunResult> {
+    const locked = await this.acquireSyncLock(account.id);
+
+    if (!locked) {
+      return {
+        skipped: true,
+        recordsFetched: 0,
+        detailsFetched: 0,
+        eventsCreated: 0,
+        eventsSkipped: 0,
+        failedDeclarations: 0,
+        syncedDeclarations: []
+      };
+    }
+
+    const syncRun = await this.syncRuns.create({
+      data: {
+        organizationId: account.organizationId,
+        integrationAccountId: account.id,
+        mode
+      }
+    });
+
+    try {
+      const result = await this.syncOrganizationAccount(account, user, syncRun.id);
+      const finishedAt = new Date();
+
+      await this.syncRuns.update({
+        where: {
+          id: syncRun.id
+        },
+        data: {
+          status: result.failedDeclarations > 0 ? 'PARTIAL' : 'SUCCEEDED',
+          finishedAt,
+          recordsFetched: result.recordsFetched,
+          detailsFetched: result.detailsFetched,
+          eventsCreated: result.eventsCreated,
+          eventsSkipped: result.eventsSkipped,
+          metadata: result as unknown as Prisma.InputJsonValue
+        }
+      });
+      await this.markAccountSyncSuccess(account.id, result, finishedAt);
+
+      return {
+        syncRunId: syncRun.id,
+        skipped: false,
+        ...result
+      };
+    } catch (error) {
+      await this.syncRuns.update({
+        where: {
+          id: syncRun.id
+        },
+        data: {
+          status: 'FAILED',
+          finishedAt: new Date(),
+          errorMessage: error instanceof Error ? error.message : 'Không thể đồng bộ Cửa khẩu số.'
+        }
+      });
+      await this.markAccountSyncFailure(account.id, error);
+
+      throw error;
+    } finally {
+      await this.releaseSyncLock(account.id);
+    }
+  }
+
+  private async acquireSyncLock(accountId: string) {
+    const now = new Date();
+    const leaseMs = this.configService.get<number>('CUA_KHAU_SO_SYNC_LEASE_MS') ?? defaultLeaseMs;
+    const result = await this.prisma.integrationAccount.updateMany({
+      where: {
+        id: accountId,
+        OR: [
+          {
+            syncLockExpiresAt: null
+          },
+          {
+            syncLockExpiresAt: {
+              lte: now
+            }
+          },
+          {
+            syncLockOwner: this.workerId
+          }
+        ]
+      },
+      data: {
+        syncLockOwner: this.workerId,
+        syncLockExpiresAt: new Date(now.getTime() + leaseMs)
+      }
+    });
+
+    return result.count > 0;
+  }
+
+  private releaseSyncLock(accountId: string) {
+    return this.prisma.integrationAccount.updateMany({
+      where: {
+        id: accountId,
+        syncLockOwner: this.workerId
+      },
+      data: {
+        syncLockOwner: null,
+        syncLockExpiresAt: null
+      }
+    });
+  }
+
+  private async hasRecentSyncRun(accountId: string, throttleMs: number) {
+    const recentRuns = await this.syncRuns.findMany({
+      where: {
+        integrationAccountId: accountId,
+        startedAt: {
+          gte: new Date(Date.now() - throttleMs)
+        }
+      },
+      take: 1
+    });
+
+    return recentRuns.length > 0;
+  }
+
+  private async markAccountSyncSuccess(
+    accountId: string,
+    result: OrganizationSyncResult,
+    finishedAt: Date
+  ) {
+    const data: Prisma.IntegrationAccountUncheckedUpdateInput = {
+      status: 'ACTIVE',
+      lastSyncAt: finishedAt,
+      lastSuccessfulSyncAt: finishedAt,
+      syncLagSeconds: result.lastObservedAt
+        ? Math.max(0, Math.floor((finishedAt.getTime() - result.lastObservedAt.getTime()) / 1000))
+        : 0,
+      consecutiveFailures: 0,
+      lastErrorAt: null,
+      nextRetryAt: null,
+      lastErrorMessage: null
+    };
+
+    if (result.detailsFetched > 0) {
+      data.lastDetailRefreshedAt = finishedAt;
+    }
+
+    await this.prisma.integrationAccount.update({
+      where: {
+        id: accountId
+      },
+      data
+    });
+  }
+
+  private async markAccountSyncFailure(accountId: string, error: unknown) {
+    const account = await this.prisma.integrationAccount.findUnique({
+      where: {
+        id: accountId
+      },
+      select: {
+        consecutiveFailures: true
+      }
+    });
+    const consecutiveFailures = (account?.consecutiveFailures ?? 0) + 1;
+    const backoffMs = Math.min(maxBackoffMs, 60_000 * 2 ** Math.min(consecutiveFailures - 1, 5));
+
+    await this.prisma.integrationAccount.update({
+      where: {
+        id: accountId
+      },
+      data: {
+        status: 'ERROR',
+        lastErrorAt: new Date(),
+        nextRetryAt: new Date(Date.now() + backoffMs),
+        consecutiveFailures,
+        lastErrorMessage: error instanceof Error ? error.message : 'Không thể đồng bộ Cửa khẩu số.'
+      }
+    });
+  }
+
+  private async resolveHealth(organizationId: string) {
+    const account = await this.prisma.integrationAccount.findFirst({
+      where: {
+        organizationId,
+        provider: 'CUA_KHAU_SO',
+        displayName: integrationDisplayName,
+        deletedAt: null,
+        encryptedCredentials: {
+          not: null
+        }
+      }
+    });
+
+    if (!account) {
+      return {
+        configured: false,
+        status: 'NOT_CONFIGURED',
+        freshnessLabel: 'Chưa kết nối Cửa khẩu số',
+        stale: true
+      };
+    }
+
+    const staleAfterMs =
+      this.configService.get<number>('CUA_KHAU_SO_STALE_AFTER_MS') ?? defaultStaleAfterMs;
+    const lastSuccessfulSyncAt = account.lastSuccessfulSyncAt ?? account.lastSyncAt;
+    const syncAgeSeconds = lastSuccessfulSyncAt
+      ? Math.floor((Date.now() - lastSuccessfulSyncAt.getTime()) / 1000)
+      : undefined;
+    const stale = syncAgeSeconds === undefined || syncAgeSeconds * 1000 > staleAfterMs;
+
+    return {
+      configured: true,
+      status: account.status,
+      freshnessLabel: this.formatFreshnessLabel(syncAgeSeconds),
+      stale,
+      lastSyncAt: account.lastSyncAt?.toISOString(),
+      lastSuccessfulSyncAt: account.lastSuccessfulSyncAt?.toISOString(),
+      lastDetailRefreshedAt: account.lastDetailRefreshedAt?.toISOString(),
+      lastErrorAt: account.lastErrorAt?.toISOString(),
+      nextRetryAt: account.nextRetryAt?.toISOString(),
+      syncLagSeconds: account.syncLagSeconds ?? syncAgeSeconds,
+      consecutiveFailures: account.consecutiveFailures,
+      lastErrorMessage: account.lastErrorMessage
+    };
+  }
+
+  private formatFreshnessLabel(syncAgeSeconds: number | undefined) {
+    if (syncAgeSeconds === undefined) {
+      return 'Chưa có lần đối chiếu thành công';
+    }
+
+    if (syncAgeSeconds < 60) {
+      return 'Vừa cập nhật';
+    }
+
+    const minutes = Math.floor(syncAgeSeconds / 60);
+
+    if (minutes < 60) {
+      return `Cập nhật ${minutes} phút trước`;
+    }
+
+    return `Cập nhật ${Math.floor(minutes / 60)} giờ trước`;
+  }
+
   private async syncDeclarationDetail(
     user: RequestUser | undefined,
     organizationId: string,
     externalId: string,
     detail: Awaited<ReturnType<CuaKhauSoService['fetchDeclarationDetail']>>,
     account: Pick<IntegrationAccount, 'id'>,
+    syncRunId?: string,
     requestedTripId?: string
   ) {
     const normalizedDeclaration = this.mapper.mapCustomsDeclaration(detail);
+    const normalizedSummary = this.mapper.mapSummary(detail);
+    const sourceSnapshot = this.mapper.mapDetail(detail, organizationId);
     const syncedAt = new Date();
     const syncBase = await this.prisma.$transaction(async (tx) => {
-      const declarationWriteData = this.toCustomsDeclarationWriteData(normalizedDeclaration);
+      const sourceWriteData: CustomsDeclarationSourceWriteData = {
+        externalId,
+        normalizedSummary,
+        sourceSnapshot,
+        sourceObservedAt: syncedAt,
+        sourceUpdatedAt: this.resolveSourceUpdatedAt(detail, syncedAt)
+      };
+
+      if (syncRunId) {
+        sourceWriteData.syncRunId = syncRunId;
+      }
+
+      const declarationWriteData = this.toCustomsDeclarationWriteData(
+        normalizedDeclaration,
+        sourceWriteData
+      );
       const declaration = await tx.customsDeclaration.upsert({
         where: {
           organizationId_declarationNumber: {
@@ -468,6 +1053,14 @@ export class CuaKhauSoService {
       }
     }
 
+    if (syncBase.linkedTrip && normalizedDeclaration.status === 'APPROVED') {
+      await this.markTripCompletedFromDeclaration(
+        organizationId,
+        syncBase.linkedTrip.id,
+        normalizedDeclaration.approvedAt ?? syncedAt
+      );
+    }
+
     return {
       declaration: {
         id: syncBase.declaration.id,
@@ -479,6 +1072,27 @@ export class CuaKhauSoService {
       skippedEvents,
       lastSyncAt: syncedAt.toISOString()
     };
+  }
+
+  private async markTripCompletedFromDeclaration(
+    organizationId: string,
+    tripId: string,
+    completedAt: Date
+  ) {
+    await this.prisma.trip.updateMany({
+      where: {
+        id: tripId,
+        organizationId,
+        deletedAt: null,
+        currentStatus: {
+          notIn: [...terminalTripStatuses]
+        }
+      },
+      data: {
+        currentStatus: 'COMPLETED',
+        currentStatusUpdatedAt: completedAt
+      }
+    });
   }
 
   private async fetchFilteredDeclarationList(
@@ -604,6 +1218,10 @@ export class CuaKhauSoService {
       update: {
         status: 'ACTIVE',
         ...(encryptedCredentials ? { encryptedCredentials } : {}),
+        lastErrorAt: null,
+        nextRetryAt: null,
+        consecutiveFailures: 0,
+        lastErrorMessage: null,
         deletedAt: null,
         deletedById: null
       },
@@ -623,7 +1241,9 @@ export class CuaKhauSoService {
         organizationId,
         provider: 'CUA_KHAU_SO',
         displayName: integrationDisplayName,
-        status: 'ACTIVE',
+        status: {
+          in: ['ACTIVE', 'ERROR']
+        },
         deletedAt: null,
         encryptedCredentials: {
           not: null
@@ -642,7 +1262,8 @@ export class CuaKhauSoService {
 
   private async syncOrganizationAccount(
     account: Pick<IntegrationAccount, 'id' | 'organizationId' | 'encryptedCredentials'>,
-    user?: RequestUser
+    user?: RequestUser,
+    syncRunId?: string
   ) {
     if (!account.encryptedCredentials) {
       throw new UnauthorizedException('Tài khoản Cửa khẩu số chưa có thông tin xác thực.');
@@ -658,6 +1279,7 @@ export class CuaKhauSoService {
     let eventsCreated = 0;
     let eventsSkipped = 0;
     let failedDeclarations = 0;
+    let lastObservedAt: Date | undefined;
     const syncedDeclarations: string[] = [];
 
     for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
@@ -670,7 +1292,23 @@ export class CuaKhauSoService {
       const declarationsInWindow = mapped.declarations.filter((declaration) =>
         this.matchesAutoSyncWindow(declaration, from)
       );
+      const observedCandidates = mapped.declarations
+        .map((declaration) => this.parseDate(declaration.createdAt))
+        .filter((value): value is Date => value !== undefined);
       recordsFetched += mapped.declarations.length;
+
+      if (observedCandidates.length > 0) {
+        const pageLatestObservedAt = new Date(
+          Math.max(...observedCandidates.map((date) => date.getTime()))
+        );
+
+        lastObservedAt =
+          !lastObservedAt || pageLatestObservedAt > lastObservedAt
+            ? pageLatestObservedAt
+            : lastObservedAt;
+      }
+
+      await this.markSourceListScanned(account.id, account.organizationId, mapped.declarations);
 
       if (mapped.declarations.length === 0) {
         break;
@@ -694,7 +1332,8 @@ export class CuaKhauSoService {
             account.organizationId,
             declaration.externalId,
             detailResponse.data,
-            account
+            account,
+            syncRunId
           );
 
           eventsCreated += result.recordedEvents.length;
@@ -713,7 +1352,7 @@ export class CuaKhauSoService {
       }
     }
 
-    return {
+    const result: OrganizationSyncResult = {
       recordsFetched,
       detailsFetched,
       eventsCreated,
@@ -721,6 +1360,12 @@ export class CuaKhauSoService {
       failedDeclarations,
       syncedDeclarations
     };
+
+    if (lastObservedAt) {
+      result.lastObservedAt = lastObservedAt;
+    }
+
+    return result;
   }
 
   private async resolveLinkedTrip(
@@ -745,7 +1390,8 @@ export class CuaKhauSoService {
           tripCode: true,
           customsDeclarationId: true,
           vehicleId: true,
-          driverProfileId: true
+          driverProfileId: true,
+          currentStatus: true
         }
       });
 
@@ -770,7 +1416,8 @@ export class CuaKhauSoService {
         tripCode: true,
         customsDeclarationId: true,
         vehicleId: true,
-        driverProfileId: true
+        driverProfileId: true,
+        currentStatus: true
       }
     });
 
@@ -800,7 +1447,8 @@ export class CuaKhauSoService {
         tripCode: true,
         customsDeclarationId: true,
         vehicleId: true,
-        driverProfileId: true
+        driverProfileId: true,
+        currentStatus: true
       }
     });
 
@@ -869,7 +1517,8 @@ export class CuaKhauSoService {
         tripCode: true,
         customsDeclarationId: true,
         vehicleId: true,
-        driverProfileId: true
+        driverProfileId: true,
+        currentStatus: true
       }
     });
 
@@ -994,7 +1643,8 @@ export class CuaKhauSoService {
               tripCode: true,
               customsDeclarationId: true,
               vehicleId: true,
-              driverProfileId: true
+              driverProfileId: true,
+              currentStatus: true
             }
           })
         : trip;
@@ -1122,6 +1772,76 @@ export class CuaKhauSoService {
     return status === 2 ? undefined : status;
   }
 
+  private resolveSourceUpdatedAt(detail: CuaKhauSoDeclarationDetail, fallback: Date) {
+    return (
+      this.parseDate(detail.confirmFinishTime) ??
+      this.parseDate(detail.paymentOfTax?.actionTime) ??
+      this.parseDate(detail.paymentOfTax?.paymentDate) ??
+      this.parseDate(detail.paymentOfTax?.tollDate) ??
+      this.parseDate(detail.createDate) ??
+      fallback
+    );
+  }
+
+  private async markSourceListScanned(
+    accountId: string,
+    organizationId: string,
+    declarations: CuaKhauSoDeclarationSummary[]
+  ) {
+    const observedAt = new Date();
+
+    await this.prisma.integrationAccount.update({
+      where: {
+        id: accountId
+      },
+      data: {
+        lastListScannedAt: observedAt,
+        lastSyncAt: observedAt
+      }
+    });
+
+    for (const declaration of declarations) {
+      const sourceUpdatedAt = this.parseDate(declaration.createdAt);
+      const update: Prisma.CustomsDeclarationUncheckedUpdateInput = {
+        declarationType: declaration.declarationType,
+        status: declaration.status,
+        sourceProvider: 'CUA_KHAU_SO',
+        sourceExternalId: declaration.externalId,
+        sourceStatus: declaration.statusLabel,
+        sourceObservedAt: observedAt,
+        normalizedSummary: declaration as unknown as Prisma.InputJsonValue
+      };
+      const create: Prisma.CustomsDeclarationUncheckedCreateInput = {
+        organizationId,
+        declarationNumber: declaration.declarationNumber,
+        declarationType: declaration.declarationType,
+        status: declaration.status,
+        sourceProvider: 'CUA_KHAU_SO',
+        sourceExternalId: declaration.externalId,
+        sourceStatus: declaration.statusLabel,
+        sourceObservedAt: observedAt,
+        normalizedSummary: declaration as unknown as Prisma.InputJsonValue
+      };
+
+      if (sourceUpdatedAt) {
+        update.sourceUpdatedAt = sourceUpdatedAt;
+        create.sourceUpdatedAt = sourceUpdatedAt;
+        create.submittedAt = sourceUpdatedAt;
+      }
+
+      await this.prisma.customsDeclaration.upsert({
+        where: {
+          organizationId_declarationNumber: {
+            organizationId,
+            declarationNumber: declaration.declarationNumber
+          }
+        },
+        update,
+        create
+      });
+    }
+  }
+
   private buildFilteredListMessage(
     sourceMessage: string,
     from: Date | undefined,
@@ -1231,18 +1951,42 @@ export class CuaKhauSoService {
     return 'UNKNOWN';
   }
 
-  private toCustomsDeclarationWriteData(data: CustomsDeclarationSyncData) {
+  private toCustomsDeclarationWriteData(
+    data: CustomsDeclarationSyncData,
+    source: CustomsDeclarationSourceWriteData
+  ) {
     const update: Prisma.CustomsDeclarationUncheckedUpdateInput = {
       declarationType: data.declarationType,
-      status: data.status
+      status: data.status,
+      sourceProvider: 'CUA_KHAU_SO',
+      sourceExternalId: source.externalId,
+      sourceStatus: source.normalizedSummary.statusLabel,
+      sourceUpdatedAt: source.sourceUpdatedAt,
+      sourceObservedAt: source.sourceObservedAt,
+      lastIngestedAt: source.sourceObservedAt,
+      normalizedSummary: source.normalizedSummary as unknown as Prisma.InputJsonValue,
+      sourceSnapshot: source.sourceSnapshot as unknown as Prisma.InputJsonValue
     };
     const create: Omit<
       Prisma.CustomsDeclarationUncheckedCreateInput,
       'organizationId' | 'declarationNumber'
     > = {
       declarationType: data.declarationType,
-      status: data.status
+      status: data.status,
+      sourceProvider: 'CUA_KHAU_SO',
+      sourceExternalId: source.externalId,
+      sourceStatus: source.normalizedSummary.statusLabel,
+      sourceUpdatedAt: source.sourceUpdatedAt,
+      sourceObservedAt: source.sourceObservedAt,
+      lastIngestedAt: source.sourceObservedAt,
+      normalizedSummary: source.normalizedSummary as unknown as Prisma.InputJsonValue,
+      sourceSnapshot: source.sourceSnapshot as unknown as Prisma.InputJsonValue
     };
+
+    if (source.syncRunId) {
+      update.latestSyncRunId = source.syncRunId;
+      create.latestSyncRunId = source.syncRunId;
+    }
 
     if (data.customsOfficeCode !== undefined) {
       update.customsOfficeCode = data.customsOfficeCode;

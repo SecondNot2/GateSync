@@ -402,6 +402,7 @@ export class CuaKhauSoMapper {
 
     const sourceRef = this.nonEmpty(detail.id, detail.numberOfDeclaration, step);
     const declarationNumber = this.nonEmpty(detail.numberOfDeclaration, 'Chưa có số tờ khai');
+    const vehicle = detail.registrationTransportDetails?.[0];
 
     candidates.push({
       eventType,
@@ -416,7 +417,10 @@ export class CuaKhauSoMapper {
         externalId: sourceRef,
         declarationNumber,
         gateName: detail.gate?.name ?? null,
-        vehiclePlate: detail.registrationTransportDetails?.[0]?.licencePlate ?? null
+        yardName: detail.parkingPlace?.name ?? null,
+        vehiclePlate: vehicle?.licencePlate ?? detail.licencePlateVNTQ ?? null,
+        driverName: vehicle?.driverName ?? null,
+        paymentCompleted: this.isTaxPaid(detail.paymentOfTax)
       }
     });
   }
@@ -587,7 +591,6 @@ export class CuaKhauSoMapper {
 
     return 'Chưa thanh toán';
   }
-
 
   private isBusinessCompleted(declaration: CuaKhauSoDeclarationLite) {
     return Boolean(declaration.confirmFinish || this.isTaxPaid(declaration.paymentOfTax));

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { UnauthorizedException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { RequestUser } from '../../auth/request-user';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -98,8 +97,85 @@ test('connect stores a server-side Cửa khẩu số session without returning s
   assert.equal(auditData?.action, 'integration.cua_khau_so.connect');
 });
 
-test('listDeclarations requires a server-side source session', async () => {
+test('listDeclarations reads the internal mirror without requiring a live source session', async () => {
+  let findManyArgs: Record<string, unknown> | undefined;
+  const observedAt = new Date('2026-05-03T13:20:21.972Z');
   const service = createService({
+    prisma: {
+      integrationAccount: {
+        findFirst: async () => null
+      },
+      customsDeclaration: {
+        findMany: async (args: Record<string, unknown>) => {
+          findManyArgs = args;
+          return [
+            {
+              id: '00000000-0000-4000-8000-000000000013',
+              declarationNumber: '2026050300533',
+              declarationType: 'IMPORT',
+              customsOfficeCode: 'CKHN',
+              status: 'SUBMITTED',
+              sourceExternalId: '84b718cf-4a72-4c7e-91d8-24e51ae53154',
+              sourceStatus: 'Chưa hoàn thành',
+              sourceUpdatedAt: observedAt,
+              sourceObservedAt: observedAt,
+              lastIngestedAt: observedAt,
+              submittedAt: observedAt,
+              normalizedSummary: {
+                externalId: '84b718cf-4a72-4c7e-91d8-24e51ae53154',
+                declarationNumber: '2026050300533',
+                createdAt: observedAt.toISOString(),
+                direction: 'IMPORT',
+                declarationType: 'IMPORT',
+                status: 'SUBMITTED',
+                statusLabel: 'Chưa hoàn thành',
+                gateName: 'Hữu Nghị',
+                gateCode: 'CKHN',
+                companyGoodsName: 'CÔNG TY CỔ PHẦN LOGISTICS THÁI VIỆT TRUNG',
+                plateNumber: 'FF0666',
+                trailerNumber: 'Chưa cập nhật',
+                changePlateNumber: 'Không sang tải',
+                totalWeight: 3.25,
+                completed: false,
+                paymentStatus: 'Chưa thanh toán'
+              },
+              sourceSnapshot: null,
+              trips: [
+                {
+                  id: '00000000-0000-4000-8000-000000000020',
+                  tripCode: 'GS-IMPORT-001',
+                  currentStatus: 'AT_BORDER_GATE'
+                }
+              ]
+            }
+          ];
+        }
+      }
+    },
+    client: {}
+  });
+
+  const result = await service.listDeclarations(
+    requestUser,
+    '00000000-0000-4000-8000-000000000001',
+    {
+      pageNumber: 1,
+      pageSize: 20,
+      status: 1,
+      keyword: 'FF0666'
+    } as never
+  );
+
+  assert.equal(result.totalCount, 1);
+  assert.equal(result.declarations[0]?.declarationNumber, '2026050300533');
+  assert.equal(result.declarations[0]?.sourceObservedAt, observedAt.toISOString());
+  assert.equal(result.declarations[0]?.linkedTripCode, 'GS-IMPORT-001');
+  assert.equal(findManyArgs !== undefined, true);
+});
+
+test('getHealth reports unconfigured and configured Cửa khẩu số sync state', async () => {
+  const healthySyncAt = new Date();
+  const unconfiguredService = createService({
     prisma: {
       integrationAccount: {
         findFirst: async () => null
@@ -107,17 +183,33 @@ test('listDeclarations requires a server-side source session', async () => {
     },
     client: {}
   });
-
-  await assert.rejects(
-    async () =>
-      service.listDeclarations(requestUser, '00000000-0000-4000-8000-000000000001', {
-        toExternalParams: () => ({
-          pageNumber: 1,
-          pageSize: 20
+  const configuredService = createService({
+    prisma: {
+      integrationAccount: {
+        findFirst: async () => ({
+          status: 'ACTIVE',
+          lastSyncAt: healthySyncAt,
+          lastSuccessfulSyncAt: healthySyncAt,
+          lastDetailRefreshedAt: healthySyncAt,
+          lastErrorAt: null,
+          nextRetryAt: null,
+          syncLagSeconds: 0,
+          consecutiveFailures: 0,
+          lastErrorMessage: null
         })
-      } as never),
-    UnauthorizedException
-  );
+      }
+    },
+    client: {}
+  });
+
+  const unconfigured = await unconfiguredService.getHealth('00000000-0000-4000-8000-000000000001');
+  const configured = await configuredService.getHealth('00000000-0000-4000-8000-000000000001');
+
+  assert.equal(unconfigured.configured, false);
+  assert.equal(unconfigured.status, 'NOT_CONFIGURED');
+  assert.equal(configured.configured, true);
+  assert.equal(configured.stale, false);
+  assert.equal(configured.lastSuccessfulSyncAt, healthySyncAt.toISOString());
 });
 
 test('syncDeclaration upserts a CustomsDeclaration and records idempotent TripEvents only in GateSync', async () => {
@@ -171,6 +263,11 @@ test('syncDeclaration upserts a CustomsDeclaration and records idempotent TripEv
     }
   };
   const prisma = {
+    trip: {
+      updateMany: async () => ({
+        count: 1
+      })
+    },
     integrationAccount: {
       upsert: async () => ({
         id: 'account-1'
@@ -297,6 +394,11 @@ test('syncDeclaration creates a GateSync Trip when no matching trip exists', asy
     }
   };
   const prisma = {
+    trip: {
+      updateMany: async () => ({
+        count: 1
+      })
+    },
     integrationAccount: {
       upsert: async () => ({
         id: 'account-1'

@@ -237,6 +237,10 @@ export type CuaKhauSoDeclarationSummary = {
   externalId: string;
   declarationNumber: string;
   createdAt?: string;
+  sourceObservedAt?: string;
+  lastIngestedAt?: string;
+  linkedTripId?: string;
+  linkedTripCode?: string;
   direction: TripDirection;
   declarationType: DeclarationType;
   status: DeclarationStatus;
@@ -328,7 +332,7 @@ export type CuaKhauSoSyncResult = {
     id: string;
   };
   linkedTripId?: string;
-  linkedBy: 'requested' | 'declaration' | 'tripCode' | 'none';
+  linkedBy: 'requested' | 'declaration' | 'tripCode' | 'created' | 'none';
   recordedEvents: Array<{
     id: string;
     eventType: string;
