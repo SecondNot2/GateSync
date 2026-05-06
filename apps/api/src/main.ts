@@ -11,8 +11,16 @@ async function bootstrap() {
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
 
   app.setGlobalPrefix('api/v1');
+  const webOrigin = configService.get<string>('WEB_ORIGIN', 'http://localhost:3000');
+  const allowedOrigins = webOrigin.split(',').map(o => o.trim());
+  
+  // Always allow the specific Vercel origin for production
+  if (nodeEnv === 'production' && !allowedOrigins.includes('https://gatesync-202.vercel.app')) {
+    allowedOrigins.push('https://gatesync-202.vercel.app');
+  }
+
   app.enableCors({
-    origin: configService.get<string>('WEB_ORIGIN', 'http://localhost:3000'),
+    origin: allowedOrigins,
     credentials: true
   });
   app.useGlobalPipes(
