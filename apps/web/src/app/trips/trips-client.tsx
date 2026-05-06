@@ -263,7 +263,7 @@ export function TripsClient({
                   label="Trạng thái"
                   value={status}
                   options={[
-                    { value: '', label: 'Tất cả trạng thái' },
+                    { value: '', label: 'Chưa hoàn thành nghiệp vụ' },
                     ...tripStatuses.map((tripStatus) => ({
                       value: tripStatus,
                       label: tripStatusLabels[tripStatus]
@@ -354,7 +354,11 @@ export function TripsClient({
                 <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   <FilterSummary
                     label="Trạng thái"
-                    value={filters.status ? tripStatusLabels[filters.status] : 'Tất cả trạng thái'}
+                    value={
+                      filters.status
+                        ? tripStatusLabels[filters.status]
+                        : 'Chưa hoàn thành nghiệp vụ'
+                    }
                   />
                   <FilterSummary
                     label="Ngoại lệ"

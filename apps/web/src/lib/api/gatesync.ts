@@ -6,6 +6,7 @@ import type {
   ApiDriverTripMediaResult,
   ApiCuaKhauSoDeclarationDetail,
   ApiCuaKhauSoDeclarationList,
+  ApiCuaKhauSoHealth,
   ApiCuaKhauSoSession,
   ApiCuaKhauSoSyncResult,
   ApiDashboardSummary,
@@ -124,6 +125,14 @@ export const gatesyncApi = {
     apiClient.post<ApiCuaKhauSoSession>(
       `/organizations/${organizationId}/integrations/cua-khau-so/session`,
       payload,
+      {
+        accessToken
+      }
+    ),
+
+  getCuaKhauSoHealth: (organizationId: string, { accessToken }: AuthenticatedOptions) =>
+    apiClient.get<ApiCuaKhauSoHealth>(
+      `/organizations/${organizationId}/integrations/cua-khau-so/health`,
       {
         accessToken
       }

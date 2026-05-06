@@ -171,19 +171,17 @@ export async function loadCuaKhauSoData(
   }
 
   const { organization, currentUser } = await resolveActiveOrganization(session.accessToken);
-  const sourceSession = await gatesyncApi.getCuaKhauSoSession(organization.id, {
-    accessToken: session.accessToken
-  });
-  const declarations = sourceSession.authenticated
-    ? await gatesyncApi.listCuaKhauSoDeclarations(organization.id, filters, {
-        accessToken: session.accessToken
-      })
-    : {
-        declarations: [],
-        totalCount: 0,
-        totalPage: 0,
-        message: 'Vui lòng đăng nhập Cửa khẩu số để xem dữ liệu.'
-      };
+  const [sourceSession, health, declarations] = await Promise.all([
+    gatesyncApi.getCuaKhauSoSession(organization.id, {
+      accessToken: session.accessToken
+    }),
+    gatesyncApi.getCuaKhauSoHealth(organization.id, {
+      accessToken: session.accessToken
+    }),
+    gatesyncApi.listCuaKhauSoDeclarations(organization.id, filters, {
+      accessToken: session.accessToken
+    })
+  ]);
   const activeMembership = organization.currentUserMembership;
   const syncRuns = hasOrganizationPermission(activeMembership.role, 'integrations:cua-khau-so:sync')
     ? await gatesyncApi.listCuaKhauSoSyncRuns(organization.id, {
@@ -198,6 +196,7 @@ export async function loadCuaKhauSoData(
       declarations.declarations.length
     ),
     session: sourceSession,
+    health,
     declarations,
     syncRuns
   };

@@ -174,6 +174,16 @@ export type ApiTripSummaryEvent = {
   recordedAt: string;
 };
 
+export type ApiTripSourceSummary = {
+  provider: 'CUA_KHAU_SO';
+  declarationNumber?: string;
+  gateName?: string;
+  yardName?: string;
+  vehiclePlate?: string;
+  driverName?: string;
+  paymentCompleted?: boolean;
+};
+
 export type ApiTripSummary = {
   id: string;
   organizationId: string;
@@ -194,9 +204,11 @@ export type ApiTripSummary = {
   updatedAt?: string;
   vehicle?: ApiVehicle | null;
   driverProfile?: ApiDriverProfile | null;
+  customsDeclaration?: ApiCustomsDeclaration | null;
   borderGate?: ApiBorderGate | null;
   yard?: ApiYard | null;
   events?: ApiTripSummaryEvent[];
+  sourceSummary?: ApiTripSourceSummary;
   operationalState?: ApiTripOperationalState;
   _count?: ApiTripCounts;
 };
@@ -214,7 +226,6 @@ export type ApiTripParticipant = {
 
 export type ApiTripDetail = ApiTripSummary & {
   shipment?: ApiShipment | null;
-  customsDeclaration?: ApiCustomsDeclaration | null;
   participants: ApiTripParticipant[];
 };
 
@@ -294,6 +305,21 @@ export type ApiCuaKhauSoSession = {
   expiresAt?: string;
 };
 
+export type ApiCuaKhauSoHealth = {
+  configured: boolean;
+  status: string;
+  freshnessLabel: string;
+  stale: boolean;
+  lastSyncAt?: string;
+  lastSuccessfulSyncAt?: string;
+  lastDetailRefreshedAt?: string;
+  lastErrorAt?: string;
+  nextRetryAt?: string;
+  syncLagSeconds?: number;
+  consecutiveFailures?: number;
+  lastErrorMessage?: string | null;
+};
+
 export type ListCuaKhauSoDeclarationsParams = {
   pageNumber?: number;
   pageSize?: ApiCuaKhauSoPageSize;
@@ -317,6 +343,10 @@ export type ApiCuaKhauSoDeclarationSummary = {
   externalId: string;
   declarationNumber: string;
   createdAt?: string;
+  sourceObservedAt?: string;
+  lastIngestedAt?: string;
+  linkedTripId?: string;
+  linkedTripCode?: string;
   direction: string;
   declarationType: string;
   status: string;
@@ -357,6 +387,15 @@ export type ApiCuaKhauSoDeclarationDetail = ApiCuaKhauSoDeclarationSummary & {
   };
   infrastructureCharges: number;
   transferCharges: number;
+  transshipment: {
+    licenseRegistered: boolean;
+    transportLicenseConfirmed: boolean;
+    eligible: boolean;
+    signed: boolean;
+    licenseNumber: string;
+    eligibleAt?: string;
+    signedAt?: string;
+  };
   vehicles: Array<{
     id?: string;
     plateNumber: string;
@@ -418,7 +457,7 @@ export type ApiIntegrationSyncRun = {
   organizationId: string;
   integrationAccountId: string;
   status: IntegrationSyncRunStatus;
-  mode: 'AUTO' | 'MANUAL';
+  mode: 'AUTO' | 'MANUAL' | 'REFRESH_ON_OPEN';
   startedAt: string;
   finishedAt?: string | null;
   recordsFetched: number;
@@ -430,13 +469,15 @@ export type ApiIntegrationSyncRun = {
 };
 
 export type ApiCuaKhauSoSyncRunResult = {
-  syncRunId: string;
+  syncRunId?: string;
+  skipped?: boolean;
   recordsFetched: number;
   detailsFetched: number;
   eventsCreated: number;
   eventsSkipped: number;
   failedDeclarations: number;
   syncedDeclarations: string[];
+  lastObservedAt?: string;
 };
 
 export type ListTripsParams = {

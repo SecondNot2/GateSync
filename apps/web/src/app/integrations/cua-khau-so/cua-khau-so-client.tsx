@@ -10,6 +10,7 @@ import type {
   ApiCuaKhauSoDeclarationDetail,
   ApiCuaKhauSoDeclarationSummary,
   ApiCuaKhauSoDirection,
+  ApiCuaKhauSoHealth,
   ApiCuaKhauSoPageSize,
   ApiCuaKhauSoStatus,
   ApiCuaKhauSoSyncResult,
@@ -262,7 +263,9 @@ export function CuaKhauSoClient() {
     try {
       const result = await runCuaKhauSoSyncNow();
       setMessage(
-        `Đã chạy đồng bộ tổ chức: ${result.detailsFetched} chi tiết, ${result.eventsCreated} sự kiện mới, ${result.eventsSkipped} sự kiện bỏ qua.`
+        result.skipped
+          ? 'Một worker khác đang đối chiếu Cửa khẩu số. GateSync sẽ dùng kết quả mới nhất khi hoàn tất.'
+          : `Đã chạy đối chiếu tổ chức: ${result.detailsFetched} chi tiết, ${result.eventsCreated} sự kiện mới, ${result.eventsSkipped} sự kiện bỏ qua.`
       );
       await reload();
     } catch (syncError) {
@@ -277,7 +280,7 @@ export function CuaKhauSoClient() {
       activeNav="integrations"
       eyebrow="Tích hợp dữ liệu"
       title="Cửa khẩu số Lạng Sơn"
-      description="Xem dữ liệu tờ khai vận tải ở chế độ chỉ đọc, sau đó đồng bộ có kiểm soát vào timeline GateSync khi cần."
+      description="Theo dõi bản sao nội bộ từ Cửa khẩu số, độ mới dữ liệu và các lần đối chiếu vào timeline GateSync."
       {...shellProps}
       action={
         <button
@@ -285,13 +288,14 @@ export function CuaKhauSoClient() {
           onClick={() => void reload()}
           className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-center text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
         >
-          Tải lại dữ liệu
+          Làm mới màn hình
         </button>
       }
     >
       {data?.notice ? <NoticePanel message={data.notice} tone="warning" /> : null}
       {message ? <NoticePanel message={message} tone="info" /> : null}
       {error && !organizationIssue ? <NoticePanel message={error} tone="error" /> : null}
+      {data?.health ? <HealthSummaryPanel health={data.health} /> : null}
       {!isLoading && organizationIssue && error ? (
         <NoOrganizationState issue={organizationIssue} message={error} />
       ) : null}
@@ -310,7 +314,7 @@ export function CuaKhauSoClient() {
                     : `${data?.declarations.totalCount ?? 0} tờ khai tìm thấy`}
                 </h2>
                 <p className="mt-2 text-sm text-slate-600">
-                  {data?.declarations.message ?? 'Dữ liệu chỉ được đọc từ Cửa khẩu số.'}
+                  {data?.declarations.message ?? 'Dữ liệu được đọc từ bản sao nội bộ GateSync.'}
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 xl:w-[54rem] xl:grid-cols-6">
@@ -365,7 +369,8 @@ export function CuaKhauSoClient() {
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900">
               <p>
                 Mặc định hiển thị tờ khai chưa hoàn thành nghiệp vụ trong 7 ngày gần nhất. Tờ khai
-                đã thanh toán Thuế được xem là hoàn thành nghiệp vụ.
+                đã thanh toán Thuế được xem là hoàn thành nghiệp vụ. Màn hình này không gọi ghi lên
+                Cửa khẩu số.
               </p>
               <Button
                 type="button"
@@ -383,11 +388,11 @@ export function CuaKhauSoClient() {
             </div>
 
             {isLoading ? <StatePanel message="Đang tải tờ khai từ API GateSync..." /> : null}
-            {!isLoading && !data?.session.authenticated ? (
-              <StatePanel message="Hãy kết nối phiên Cửa khẩu số chỉ đọc trước khi tải dữ liệu thật." />
+            {!isLoading && data && !data.health.configured && data.declarations.totalCount === 0 ? (
+              <StatePanel message="Chưa cấu hình tài khoản nguồn. Sau khi kết nối, worker backend sẽ tạo bản sao nội bộ để theo dõi." />
             ) : null}
             {!isLoading &&
-            data?.session.authenticated &&
+            data?.health.configured &&
             data.declarations.declarations.length === 0 ? (
               <StatePanel message="Không tìm thấy tờ khai phù hợp với bộ lọc hiện tại." />
             ) : null}
@@ -426,24 +431,25 @@ export function CuaKhauSoClient() {
                   Tự động đồng bộ
                 </p>
                 <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                  Auto-sync đang chạy mặc định
+                  Worker nền giữ bản sao nội bộ
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
                   Worker backend dùng credential đã mã hóa để tự đọc các tờ khai chưa hoàn thành
-                  trong 7 ngày gần nhất, tạo sự kiện timeline idempotent và tự liên kết xe/tài xế
-                  khi khớp hồ sơ nội bộ. Không có thao tác ghi ngược lên hệ thống nguồn.
+                  trong 7 ngày gần nhất, cập nhật bản sao nội bộ, tạo sự kiện timeline idempotent và
+                  tự liên kết xe/tài xế khi khớp hồ sơ nội bộ. Không có thao tác ghi ngược lên hệ
+                  thống nguồn.
                 </p>
               </div>
               <Button
                 type="button"
                 variant="secondary"
-                disabled={!canSyncIntegration || isRunningSyncNow || !data?.session.authenticated}
+                disabled={!canSyncIntegration || isRunningSyncNow || !data?.health.configured}
                 onClick={() => void runManualAutoSync()}
               >
                 {canSyncIntegration
                   ? isRunningSyncNow
-                    ? 'Đang chạy...'
-                    : 'Chạy lại khi cần'
+                    ? 'Đang đối chiếu...'
+                    : 'Đối chiếu ngay'
                   : 'Không có quyền đồng bộ'}
               </Button>
             </div>
@@ -557,6 +563,48 @@ export function CuaKhauSoClient() {
   );
 }
 
+function HealthSummaryPanel({ health }: { health: ApiCuaKhauSoHealth }) {
+  return (
+    <section className="grid gap-3 lg:grid-cols-4">
+      <div
+        className={`rounded-3xl border px-5 py-4 ${
+          health.stale ? 'border-amber-100 bg-amber-50' : 'border-emerald-100 bg-emerald-50'
+        }`}
+      >
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
+          Độ mới dữ liệu
+        </p>
+        <p className="mt-2 text-xl font-bold text-slate-950">{health.freshnessLabel}</p>
+        <p className="mt-1 text-sm text-slate-600">
+          {health.configured ? 'Bản sao nội bộ đang được theo dõi.' : 'Chưa cấu hình nguồn.'}
+        </p>
+      </div>
+      <MetricCard
+        label="Lần đối chiếu thành công"
+        value={formatApiDateTime(health.lastSuccessfulSyncAt)}
+      />
+      <MetricCard label="Lần quét danh sách" value={formatApiDateTime(health.lastSyncAt)} />
+      <MetricCard
+        label={health.status === 'ERROR' ? 'Lỗi gần nhất' : 'Trạng thái worker'}
+        value={
+          health.status === 'ERROR'
+            ? health.lastErrorMessage || 'Cần kiểm tra kết nối'
+            : health.status
+        }
+      />
+    </section>
+  );
+}
+
+function MetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-3xl border border-slate-100 bg-white/95 px-5 py-4 shadow-soft">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+      <p className="mt-2 text-base font-bold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
 function DeclarationList({
   declarations,
   selectedExternalId,
@@ -584,6 +632,10 @@ function DeclarationList({
               <p className="font-semibold text-slate-950">{declaration.declarationNumber}</p>
               <p className="mt-1 text-sm text-slate-600">
                 {declaration.companyGoodsName} · {formatApiDateTime(declaration.createdAt)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                GateSync thấy lúc {formatApiDateTime(declaration.sourceObservedAt)}
+                {declaration.linkedTripCode ? ` · chuyến ${declaration.linkedTripCode}` : ''}
               </p>
             </div>
             <div>
@@ -666,7 +718,7 @@ function SyncRunList({ syncRuns }: { syncRuns: ApiIntegrationSyncRun[] }) {
         <div key={run.id} className="rounded-3xl border border-slate-100 bg-slate-50 px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm font-bold text-slate-950">
-              {run.mode === 'AUTO' ? 'Tự động' : 'Thủ công'}
+              {getSyncRunModeLabel(run.mode)}
             </span>
             <span
               className={`rounded-full px-3 py-1 text-xs font-bold ${
@@ -697,6 +749,18 @@ function SyncRunList({ syncRuns }: { syncRuns: ApiIntegrationSyncRun[] }) {
       ))}
     </div>
   );
+}
+
+function getSyncRunModeLabel(mode: ApiIntegrationSyncRun['mode']) {
+  if (mode === 'REFRESH_ON_OPEN') {
+    return 'Mở màn hình';
+  }
+
+  if (mode === 'MANUAL') {
+    return 'Đối chiếu ngay';
+  }
+
+  return 'Tự động';
 }
 
 function DeclarationDetailPanel({

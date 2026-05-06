@@ -120,6 +120,16 @@ export function getDevCuaKhauSoData(
     session: {
       authenticated: false
     },
+    health: {
+      configured: true,
+      status: 'ACTIVE',
+      freshnessLabel: 'Dữ liệu mẫu',
+      stale: false,
+      lastSyncAt: new Date().toISOString(),
+      lastSuccessfulSyncAt: new Date().toISOString(),
+      syncLagSeconds: 0,
+      consecutiveFailures: 0
+    },
     declarations: {
       declarations,
       totalCount: declarations.length,
@@ -136,6 +146,9 @@ const devCuaKhauSoDeclarations: ApiCuaKhauSoDeclarationSummary[] = [
     externalId: '84b718cf-4a72-4c7e-91d8-24e51ae53154',
     declarationNumber: '2026050300533',
     createdAt: '2026-05-03T13:15:21.972Z',
+    sourceObservedAt: '2026-05-03T13:20:21.972Z',
+    lastIngestedAt: '2026-05-03T13:20:22.972Z',
+    linkedTripCode: '2026050300533',
     direction: 'IMPORT',
     declarationType: 'IMPORT',
     status: 'SUBMITTED',
@@ -274,6 +287,23 @@ function matchesFilters(trip: (typeof demoTrips)[number], filters: ListTripsPara
   const query = filters.search?.trim().toLowerCase();
 
   if (filters.status && trip.currentStatus !== filters.status) {
+    return false;
+  }
+
+  if (
+    !filters.status &&
+    (trip.currentStatus === 'COMPLETED' || trip.currentStatus === 'CANCELLED')
+  ) {
+    return false;
+  }
+
+  const plannedStartAt = new Date(trip.plannedStartAt).getTime();
+
+  if (filters.from && plannedStartAt < new Date(filters.from).getTime()) {
+    return false;
+  }
+
+  if (filters.to && plannedStartAt > new Date(filters.to).getTime()) {
     return false;
   }
 

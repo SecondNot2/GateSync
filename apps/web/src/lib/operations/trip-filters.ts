@@ -1,11 +1,20 @@
-import { tripExceptionFilters, tripStatuses, type TripExceptionFilter, type TripStatus } from '@gatesync/shared';
+import {
+  tripExceptionFilters,
+  tripStatuses,
+  type TripExceptionFilter,
+  type TripStatus
+} from '@gatesync/shared';
 import type { ListTripsParams } from '@/lib/api/types';
 
 export type TripsSearchParams = Record<string, string | string[] | undefined>;
 
+const defaultTripWindowDays = 7;
+
 export function toTripFilters(searchParams: URLSearchParams): ListTripsParams {
   const filters: ListTripsParams = {
-    limit: 50
+    limit: 50,
+    from: getDefaultTripFromIso(),
+    to: getDefaultTripToIso()
   };
   const search = searchParams.get('search')?.trim();
   const status = searchParams.get('status');
@@ -101,12 +110,12 @@ export function countActiveTripFilters(filters: ListTripsParams) {
 export function hasAdvancedTripFilters(filters: ListTripsParams) {
   return Boolean(
     filters.borderGateId ||
-      filters.yardId ||
-      filters.driverProfileId ||
-      filters.vehicleId ||
-      filters.cargoOwnerOrganizationId ||
-      filters.from ||
-      filters.to
+    filters.yardId ||
+    filters.driverProfileId ||
+    filters.vehicleId ||
+    filters.cargoOwnerOrganizationId ||
+    filters.from ||
+    filters.to
   );
 }
 
@@ -116,4 +125,17 @@ export function isTripStatus(value: string | null): value is TripStatus {
 
 export function isTripExceptionFilter(value: string | null): value is TripExceptionFilter {
   return tripExceptionFilters.some((filter) => filter === value);
+}
+
+function getDefaultTripFromIso() {
+  const date = new Date();
+  date.setDate(date.getDate() - defaultTripWindowDays);
+  date.setHours(0, 0, 0, 0);
+  return date.toISOString();
+}
+
+function getDefaultTripToIso() {
+  const date = new Date();
+  date.setHours(23, 59, 59, 999);
+  return date.toISOString();
 }

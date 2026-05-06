@@ -285,13 +285,26 @@ function CurrentTripCard({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <DriverTripInfo label="Xe" value={trip.vehicle?.plateNumber ?? 'Chưa gán xe'} />
+        <DriverTripInfo
+          label="Xe"
+          value={trip.vehicle?.plateNumber ?? trip.sourceSummary?.vehiclePlate ?? 'Chưa gán xe'}
+        />
         <DriverTripInfo
           label="Tài xế"
-          value={trip.driverProfile?.displayName ?? 'Chưa gán hồ sơ tài xế'}
+          value={
+            trip.driverProfile?.displayName ??
+            trip.sourceSummary?.driverName ??
+            'Chưa gán hồ sơ tài xế'
+          }
         />
-        <DriverTripInfo label="Cửa khẩu" value={trip.borderGate?.name ?? 'Chưa xác định'} />
-        <DriverTripInfo label="Bãi" value={trip.yard?.name ?? 'Chưa chọn bãi'} />
+        <DriverTripInfo
+          label="Cửa khẩu"
+          value={trip.borderGate?.name ?? trip.sourceSummary?.gateName ?? 'Chưa xác định'}
+        />
+        <DriverTripInfo
+          label="Bãi"
+          value={trip.yard?.name ?? trip.sourceSummary?.yardName ?? 'Chưa chọn bãi'}
+        />
         <DriverTripInfo label="Bắt đầu dự kiến" value={formatApiDateTime(trip.plannedStartAt)} />
         <DriverTripInfo label="Đến dự kiến" value={formatApiDateTime(trip.plannedArrivalAt)} />
       </div>

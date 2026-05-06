@@ -19,6 +19,7 @@ import {
 } from '@gatesync/shared';
 import type {
   ApiCurrentUser,
+  ApiCuaKhauSoHealth,
   ApiIntegrationSyncRun,
   ApiDashboardSummary,
   ApiCuaKhauSoDeclarationList,
@@ -175,6 +176,7 @@ export type TripsViewData = {
 export type CuaKhauSoViewData = {
   organization: OperationsOrganizationContext;
   session: ApiCuaKhauSoSession;
+  health: ApiCuaKhauSoHealth;
   declarations: ApiCuaKhauSoDeclarationList;
   syncRuns: ApiIntegrationSyncRun[];
   notice?: string;
@@ -513,14 +515,14 @@ export function toTripSummaryView(trip: ApiTripSummary): OperationsTripSummary {
     statusUpdatedAt: formatApiDateTime(
       trip.currentStatusUpdatedAt ?? trip.updatedAt ?? trip.createdAt
     ),
-    borderGate: trip.borderGate?.name ?? 'Chưa chọn cửa khẩu',
-    yard: trip.yard?.name ?? 'Chưa chọn bãi',
+    borderGate: trip.borderGate?.name ?? trip.sourceSummary?.gateName ?? 'Chưa chọn cửa khẩu',
+    yard: trip.yard?.name ?? trip.sourceSummary?.yardName ?? 'Chưa chọn bãi',
     vehicle: {
-      plateNumber: trip.vehicle?.plateNumber ?? 'Chưa gán xe',
+      plateNumber: trip.vehicle?.plateNumber ?? trip.sourceSummary?.vehiclePlate ?? 'Chưa gán xe',
       type: trip.vehicle?.vehicleType ?? 'OTHER'
     },
     driver: {
-      name: resolveDriverName(trip.driverProfile),
+      name: resolveDriverName(trip.driverProfile, trip.sourceSummary?.driverName),
       phone: trip.driverProfile?.phone ?? trip.driverProfile?.user?.phone ?? 'Chưa cập nhật'
     },
     plannedStartAt: formatApiDateTime(trip.plannedStartAt),
@@ -626,12 +628,13 @@ function toAdminDriverView(driver: ApiDriverProfile): AdminDriver {
   };
 }
 
-function resolveDriverName(driver?: ApiDriverProfile | null) {
+function resolveDriverName(driver?: ApiTripSummary['driverProfile'], fallbackName?: string) {
   return (
     driver?.displayName ??
     driver?.user?.fullName ??
     driver?.user?.email ??
     driver?.phone ??
+    fallbackName ??
     'Chưa gán tài xế'
   );
 }
