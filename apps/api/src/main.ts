@@ -14,8 +14,8 @@ async function bootstrap() {
   const webOrigin = configService.get<string>('WEB_ORIGIN', 'http://localhost:3000');
   const allowedOrigins = webOrigin.split(',').map(o => o.trim());
   
-  // Always allow the specific Vercel origin for production
-  if (nodeEnv === 'production' && !allowedOrigins.includes('https://gatesync-202.vercel.app')) {
+  // Allow the specific Vercel origin to support testing production frontend with local API
+  if (!allowedOrigins.includes('https://gatesync-202.vercel.app')) {
     allowedOrigins.push('https://gatesync-202.vercel.app');
   }
 
