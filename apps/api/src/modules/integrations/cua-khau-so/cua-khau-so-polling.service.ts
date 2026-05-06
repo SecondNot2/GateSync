@@ -22,8 +22,8 @@ export class CuaKhauSoPollingService implements OnModuleInit, OnModuleDestroy {
     }
 
     const intervalMs = Math.max(
-      60_000,
-      this.configService.get<number>('CUA_KHAU_SO_POLLING_INTERVAL_MS') ?? 300_000
+      10 * 60_000,
+      this.configService.get<number>('CUA_KHAU_SO_POLLING_INTERVAL_MS') ?? 30 * 60_000
     );
 
     this.timer = setInterval(() => {

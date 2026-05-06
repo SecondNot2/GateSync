@@ -493,12 +493,12 @@ function buildOnboardingChecklist(organization: ApiOrganization): OnboardingChec
       key: 'cua-khau-so',
       title: 'Kết nối Cửa khẩu số',
       description: canConnectCuaKhauSo
-        ? `Nhập tài khoản nguồn được ủy quyền tại trang Tích hợp dữ liệu. Các vai trò được phép: ${cuaKhauSoConnectorRoleLabels}.`
+        ? `Nhập tài khoản nguồn được ủy quyền tại Cài đặt cấu hình. Các vai trò được phép: ${cuaKhauSoConnectorRoleLabels}.`
         : `Credential nguồn chỉ nhập sau auth + RBAC. Các vai trò được phép kết nối: ${cuaKhauSoConnectorRoleLabels}.`,
       statusLabel: canConnectCuaKhauSo ? 'Sẵn sàng kết nối' : 'Cần quyền tích hợp',
       tone: canConnectCuaKhauSo ? 'next' : 'locked',
       actionLabel: canConnectCuaKhauSo ? 'Kết nối nguồn' : 'Không có quyền',
-      href: canConnectCuaKhauSo ? '/integrations/cua-khau-so?from=onboarding' : undefined
+      href: canConnectCuaKhauSo ? '/settings/cua-khau-so?from=onboarding' : undefined
     }
   ];
 }

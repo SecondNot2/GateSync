@@ -4,13 +4,14 @@ import path from 'node:path';
 import test from 'node:test';
 import type { ConfigService } from '@nestjs/config';
 import type { RequestUser } from '../../auth/request-user';
+import type { NotificationsService } from '../../notifications/notifications.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { TripsService } from '../../trips/trips.service';
 import { CuaKhauSoMapper } from './cua-khau-so.mapper';
 import { CuaKhauSoService } from './cua-khau-so.service';
 import { CuaKhauSoSessionStore } from './cua-khau-so-session.store';
 import type { CuaKhauSoClient } from './cua-khau-so.client';
-import type { CuaKhauSoDeclarationDetail } from './cua-khau-so.types';
+import type { CuaKhauSoDeclarationDetail, CuaKhauSoDeclarationSummary } from './cua-khau-so.types';
 
 const requestUser: RequestUser = {
   id: '00000000-0000-4000-8000-000000000002',
@@ -44,6 +45,7 @@ function createService(params: {
   prisma: unknown;
   client: unknown;
   tripsService?: unknown;
+  notificationsService?: unknown;
   sessionStore?: CuaKhauSoSessionStore;
 }) {
   return new CuaKhauSoService(
@@ -54,6 +56,9 @@ function createService(params: {
     params.client as CuaKhauSoClient,
     new CuaKhauSoMapper(),
     params.sessionStore ?? new CuaKhauSoSessionStore(),
+    (params.notificationsService ?? {
+      createCuaKhauSoDocumentStaffNotifications: async () => undefined
+    }) as NotificationsService,
     (params.tripsService ?? {}) as TripsService
   );
 }
@@ -210,6 +215,55 @@ test('getHealth reports unconfigured and configured Cửa khẩu số sync state
   assert.equal(configured.configured, true);
   assert.equal(configured.stale, false);
   assert.equal(configured.lastSuccessfulSyncAt, healthySyncAt.toISOString());
+});
+
+test('auto sync window only includes unfinished recent Cửa khẩu số declarations', () => {
+  const service = createService({
+    prisma: {},
+    client: {}
+  });
+  const serviceInternals = service as unknown as {
+    matchesAutoSyncWindow: (declaration: CuaKhauSoDeclarationSummary, from: Date) => boolean;
+  };
+  const from = new Date('2026-05-01T00:00:00.000Z');
+  const baseDeclaration: CuaKhauSoDeclarationSummary = {
+    externalId: 'external-1',
+    declarationNumber: '2026050300533',
+    createdAt: '2026-05-03T00:00:00.000Z',
+    direction: 'IMPORT',
+    declarationType: 'IMPORT',
+    status: 'SUBMITTED',
+    statusLabel: 'Chưa hoàn thành',
+    gateName: 'Hữu Nghị',
+    companyGoodsName: 'CÔNG TY CỔ PHẦN LOGISTICS THÁI VIỆT TRUNG',
+    plateNumber: 'FF0666',
+    trailerNumber: 'Chưa cập nhật',
+    changePlateNumber: 'Không sang tải',
+    completed: false,
+    paymentStatus: 'Chưa thanh toán'
+  };
+
+  assert.equal(serviceInternals.matchesAutoSyncWindow(baseDeclaration, from), true);
+  assert.equal(
+    serviceInternals.matchesAutoSyncWindow(
+      {
+        ...baseDeclaration,
+        completed: true
+      },
+      from
+    ),
+    false
+  );
+  assert.equal(
+    serviceInternals.matchesAutoSyncWindow(
+      {
+        ...baseDeclaration,
+        createdAt: '2026-04-25T00:00:00.000Z'
+      },
+      from
+    ),
+    false
+  );
 });
 
 test('syncDeclaration upserts a CustomsDeclaration and records idempotent TripEvents only in GateSync', async () => {

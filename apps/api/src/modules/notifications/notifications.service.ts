@@ -11,6 +11,15 @@ type TripEventNotificationInput = {
   eventType: string;
   occurredAt: Date;
 };
+type CuaKhauSoDocumentStaffNotificationInput = {
+  kind: 'cua_khau_so_border_guard_lag' | 'cua_khau_so_transshipment_ready';
+  idempotencyKey: string;
+  eventType: string;
+  title: string;
+  message: string;
+  occurredAt: Date;
+  declarationNumber: string;
+};
 
 const importantTripEventTypes = [
   'DEPARTED',
@@ -217,6 +226,79 @@ export class NotificationsService {
     });
   }
 
+  async createCuaKhauSoDocumentStaffNotifications(
+    prisma: PrismaExecutor,
+    organizationId: string,
+    tripId: string,
+    input: CuaKhauSoDocumentStaffNotificationInput
+  ) {
+    const recipients = await prisma.membership.findMany({
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+        role: 'DOCUMENT_STAFF'
+      },
+      select: {
+        userId: true
+      }
+    });
+    const recipientUserIds = [...new Set(recipients.map((recipient) => recipient.userId))];
+
+    if (recipientUserIds.length === 0) {
+      return;
+    }
+
+    const existingNotifications = await prisma.notification.findMany({
+      where: {
+        organizationId,
+        tripId,
+        recipientUserId: {
+          in: recipientUserIds
+        },
+        channel: 'IN_APP'
+      },
+      select: {
+        recipientUserId: true,
+        payload: true
+      }
+    });
+    const alreadyNotifiedUserIds = new Set(
+      existingNotifications
+        .filter((notification) =>
+          this.hasIdempotencyKey(notification.payload, input.idempotencyKey)
+        )
+        .map((notification) => notification.recipientUserId)
+        .filter((userId): userId is string => Boolean(userId))
+    );
+    const pendingRecipientUserIds = recipientUserIds.filter(
+      (recipientUserId) => !alreadyNotifiedUserIds.has(recipientUserId)
+    );
+
+    if (pendingRecipientUserIds.length === 0) {
+      return;
+    }
+
+    await prisma.notification.createMany({
+      data: pendingRecipientUserIds.map((recipientUserId) => ({
+        organizationId,
+        tripId,
+        recipientUserId,
+        channel: 'IN_APP' as unknown as NotificationChannel,
+        status: 'PENDING' as const,
+        payload: {
+          kind: input.kind,
+          idempotencyKey: input.idempotencyKey,
+          eventType: input.eventType,
+          title: input.title,
+          message: input.message,
+          declarationNumber: input.declarationNumber,
+          occurredAt: input.occurredAt.toISOString(),
+          delivery: 'ready'
+        }
+      }))
+    });
+  }
+
   private resolveMembershipRecipientRoles(eventType: string) {
     const roles = new Set<DefaultRecipientRole>(['OWNER', 'ADMIN', 'DISPATCHER']);
 
@@ -262,5 +344,14 @@ export class NotificationsService {
     }
 
     return 'queued_provider_adapter';
+  }
+
+  private hasIdempotencyKey(payload: Prisma.JsonValue | null, idempotencyKey: string) {
+    return (
+      payload !== null &&
+      typeof payload === 'object' &&
+      !Array.isArray(payload) &&
+      (payload as Record<string, unknown>).idempotencyKey === idempotencyKey
+    );
   }
 }

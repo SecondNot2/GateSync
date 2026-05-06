@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
+import { NotificationsModule } from '../../notifications/notifications.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { TripsModule } from '../../trips/trips.module';
 import { CuaKhauSoClient } from './cua-khau-so.client';
@@ -10,7 +11,7 @@ import { CuaKhauSoService } from './cua-khau-so.service';
 import { CuaKhauSoSessionStore } from './cua-khau-so-session.store';
 
 @Module({
-  imports: [AuthModule, PrismaModule, TripsModule],
+  imports: [AuthModule, NotificationsModule, PrismaModule, TripsModule],
   controllers: [CuaKhauSoController],
   providers: [
     CuaKhauSoClient,

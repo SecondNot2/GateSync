@@ -23,11 +23,20 @@ type DriverProfileReference = {
 type TripSourceSummary = {
   provider: 'CUA_KHAU_SO';
   declarationNumber?: string;
+  statusLabel?: string;
   gateName?: string;
   yardName?: string;
   vehiclePlate?: string;
   driverName?: string;
+  paymentStatus?: string;
   paymentCompleted?: boolean;
+  completed?: boolean;
+  sourceObservedAt?: string;
+  sourceUpdatedAt?: string;
+  lastIngestedAt?: string;
+  freshnessLabel?: string;
+  stale?: boolean;
+  warningCodes?: string[];
 };
 type TripSourceEvent = {
   eventType: string;
@@ -297,6 +306,44 @@ export class TripsService {
               name: containsSearch
             }
           }
+        },
+        {
+          customsDeclaration: {
+            is: {
+              OR: [
+                {
+                  declarationNumber: containsSearch
+                },
+                {
+                  customsOfficeCode: containsSearch
+                },
+                {
+                  sourceStatus: containsSearch
+                },
+                {
+                  normalizedSummary: {
+                    path: ['companyGoodsName'],
+                    string_contains: search,
+                    mode: Prisma.QueryMode.insensitive
+                  }
+                },
+                {
+                  normalizedSummary: {
+                    path: ['plateNumber'],
+                    string_contains: search,
+                    mode: Prisma.QueryMode.insensitive
+                  }
+                },
+                {
+                  sourceSnapshot: {
+                    path: ['goods', '0', 'declarationNumber'],
+                    string_contains: search,
+                    mode: Prisma.QueryMode.insensitive
+                  }
+                }
+              ]
+            }
+          }
         }
       ];
     }
@@ -360,14 +407,43 @@ export class TripsService {
       customsDeclaration?: unknown;
     };
     const sourceSummary = this.resolveTripSourceSummary(tripWithSources);
+    const cuaKhauSoDeclaration = this.resolveCuaKhauSoDeclaration(tripWithSources);
+    const publicCustomsDeclaration = this.toPublicCustomsDeclaration(tripWithSources);
     const publicEvents = tripWithSources.events?.map(
       ({ rawPayload: _rawPayload, ...event }) => event
     );
 
     return {
       ...trip,
+      ...(publicCustomsDeclaration ? { customsDeclaration: publicCustomsDeclaration } : {}),
       ...(publicEvents ? { events: publicEvents } : {}),
-      ...(sourceSummary ? { sourceSummary } : {})
+      ...(sourceSummary ? { sourceSummary } : {}),
+      ...(cuaKhauSoDeclaration ? { cuaKhauSoDeclaration } : {})
+    };
+  }
+
+  private toPublicCustomsDeclaration(trip: { customsDeclaration?: unknown }) {
+    const declaration = this.asRecord(trip.customsDeclaration);
+
+    if (!declaration) {
+      return undefined;
+    }
+
+    return {
+      id: this.getString(declaration, 'id'),
+      declarationNumber: this.getString(declaration, 'declarationNumber'),
+      declarationType: this.getString(declaration, 'declarationType'),
+      customsOfficeCode: this.getString(declaration, 'customsOfficeCode') ?? null,
+      status: this.getString(declaration, 'status'),
+      submittedAt: this.getIsoString(declaration, 'submittedAt') ?? null,
+      approvedAt: this.getIsoString(declaration, 'approvedAt') ?? null,
+      rejectedAt: this.getIsoString(declaration, 'rejectedAt') ?? null,
+      sourceProvider: this.getString(declaration, 'sourceProvider') ?? null,
+      sourceExternalId: this.getString(declaration, 'sourceExternalId') ?? null,
+      sourceStatus: this.getString(declaration, 'sourceStatus') ?? null,
+      sourceObservedAt: this.getIsoString(declaration, 'sourceObservedAt') ?? null,
+      sourceUpdatedAt: this.getIsoString(declaration, 'sourceUpdatedAt') ?? null,
+      lastIngestedAt: this.getIsoString(declaration, 'lastIngestedAt') ?? null
     };
   }
 
@@ -390,13 +466,43 @@ export class TripsService {
     const declarationNumber =
       this.getString(sourcePayload, 'declarationNumber') ??
       this.getString(declaration, 'declarationNumber');
-    const gateName = this.getString(sourcePayload, 'gateName');
-    const yardName = this.getString(sourcePayload, 'yardName');
-    const vehiclePlate = this.getString(sourcePayload, 'vehiclePlate');
+    const sourceSnapshot = this.asRecord(declaration?.sourceSnapshot);
+    const normalizedSummary = this.asRecord(declaration?.normalizedSummary);
+    const paymentStatus =
+      this.getString(sourceSnapshot, 'paymentStatus') ??
+      this.getString(normalizedSummary, 'paymentStatus');
+    const gateName =
+      this.getString(sourcePayload, 'gateName') ??
+      this.getString(sourceSnapshot, 'gateName') ??
+      this.getString(normalizedSummary, 'gateName');
+    const yardName =
+      this.getString(sourcePayload, 'yardName') ??
+      this.getNestedString(sourceSnapshot, ['parkingPlace', 'name']);
+    const vehiclePlate =
+      this.getString(sourcePayload, 'vehiclePlate') ??
+      this.getString(sourceSnapshot, 'plateNumber') ??
+      this.getString(normalizedSummary, 'plateNumber');
     const driverName = this.getString(sourcePayload, 'driverName');
+    const statusLabel =
+      this.getString(declaration, 'sourceStatus') ??
+      this.getString(sourceSnapshot, 'statusLabel') ??
+      this.getString(normalizedSummary, 'statusLabel');
+    const completed =
+      this.getBoolean(sourceSnapshot, 'completed') ??
+      this.getBoolean(normalizedSummary, 'completed');
     const paymentCompleted =
       this.getBoolean(sourcePayload, 'paymentCompleted') ??
+      completed ??
       (this.getString(declaration, 'status') === 'APPROVED' ? true : undefined);
+    const sourceObservedAt = this.getIsoString(declaration, 'sourceObservedAt');
+    const sourceUpdatedAt = this.getIsoString(declaration, 'sourceUpdatedAt');
+    const lastIngestedAt = this.getIsoString(declaration, 'lastIngestedAt');
+    const warningCodes = this.resolveCuaKhauSoWarnings({
+      sourceObservedAt,
+      paymentCompleted,
+      status: this.getString(declaration, 'status'),
+      statusLabel
+    });
 
     if (declarationNumber) {
       summary.declarationNumber = declarationNumber;
@@ -418,11 +524,86 @@ export class TripsService {
       summary.driverName = driverName;
     }
 
+    if (statusLabel) {
+      summary.statusLabel = statusLabel;
+    }
+
+    if (paymentStatus) {
+      summary.paymentStatus = paymentStatus;
+    }
+
     if (paymentCompleted !== undefined) {
       summary.paymentCompleted = paymentCompleted;
     }
 
+    if (completed !== undefined) {
+      summary.completed = completed;
+    }
+
+    if (sourceObservedAt) {
+      summary.sourceObservedAt = sourceObservedAt;
+      summary.freshnessLabel = this.formatFreshnessLabel(sourceObservedAt);
+      summary.stale = this.isStaleSource(sourceObservedAt);
+    }
+
+    if (sourceUpdatedAt) {
+      summary.sourceUpdatedAt = sourceUpdatedAt;
+    }
+
+    if (lastIngestedAt) {
+      summary.lastIngestedAt = lastIngestedAt;
+    }
+
+    if (warningCodes.length > 0) {
+      summary.warningCodes = warningCodes;
+    }
+
     return summary;
+  }
+
+  private resolveCuaKhauSoDeclaration(trip: { customsDeclaration?: unknown }) {
+    const declaration = this.asRecord(trip.customsDeclaration);
+
+    if (!declaration || this.getString(declaration, 'sourceProvider') !== 'CUA_KHAU_SO') {
+      return undefined;
+    }
+
+    const sourceSnapshot = this.sanitizePublicJson(declaration.sourceSnapshot);
+    const normalizedSummary = this.sanitizePublicJson(declaration.normalizedSummary);
+    const sourceDetail =
+      this.asRecord(sourceSnapshot) ??
+      this.asRecord(normalizedSummary) ??
+      ({
+        declarationNumber:
+          this.getString(declaration, 'declarationNumber') ?? 'Chưa liên kết tờ khai',
+        declarationType: this.getString(declaration, 'declarationType') ?? 'UNKNOWN',
+        status: this.getString(declaration, 'status') ?? 'SUBMITTED',
+        statusLabel: this.getString(declaration, 'sourceStatus') ?? 'Chưa cập nhật'
+      } as Record<string, unknown>);
+    const sourceObservedAt = this.getIsoString(declaration, 'sourceObservedAt');
+    const sourceUpdatedAt = this.getIsoString(declaration, 'sourceUpdatedAt');
+    const lastIngestedAt = this.getIsoString(declaration, 'lastIngestedAt');
+
+    return {
+      ...sourceDetail,
+      id: this.getString(declaration, 'id'),
+      externalId:
+        this.getString(sourceDetail, 'externalId') ??
+        this.getString(declaration, 'sourceExternalId') ??
+        this.getString(declaration, 'declarationNumber'),
+      declarationNumber:
+        this.getString(sourceDetail, 'declarationNumber') ??
+        this.getString(declaration, 'declarationNumber'),
+      sourceStatus:
+        this.getString(declaration, 'sourceStatus') ?? this.getString(sourceDetail, 'statusLabel'),
+      sourceObservedAt,
+      sourceUpdatedAt,
+      lastIngestedAt,
+      freshnessLabel: sourceObservedAt
+        ? this.formatFreshnessLabel(sourceObservedAt)
+        : 'Chưa có dữ liệu đối chiếu',
+      stale: sourceObservedAt ? this.isStaleSource(sourceObservedAt) : true
+    };
   }
 
   private asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -439,10 +620,119 @@ export class TripsService {
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
   }
 
+  private getNestedString(record: Record<string, unknown> | undefined, path: string[]) {
+    const value = path.reduce<unknown>((current, key) => {
+      const currentRecord = this.asRecord(current);
+      return currentRecord?.[key];
+    }, record);
+
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
   private getBoolean(record: Record<string, unknown> | undefined, key: string) {
     const value = record?.[key];
 
     return typeof value === 'boolean' ? value : undefined;
+  }
+
+  private getIsoString(record: Record<string, unknown> | undefined, key: string) {
+    const value = record?.[key];
+
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private formatFreshnessLabel(value: string) {
+    const observedAt = new Date(value);
+
+    if (Number.isNaN(observedAt.getTime())) {
+      return 'Chưa xác định độ mới';
+    }
+
+    const ageSeconds = Math.max(0, Math.floor((Date.now() - observedAt.getTime()) / 1000));
+
+    if (ageSeconds < 60) {
+      return 'Vừa cập nhật';
+    }
+
+    const minutes = Math.floor(ageSeconds / 60);
+
+    if (minutes < 60) {
+      return `Cập nhật ${minutes} phút trước`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+
+    if (hours < 24) {
+      return `Cập nhật ${hours} giờ trước`;
+    }
+
+    return `Cập nhật ${Math.floor(hours / 24)} ngày trước`;
+  }
+
+  private isStaleSource(value: string) {
+    const observedAt = new Date(value);
+
+    if (Number.isNaN(observedAt.getTime())) {
+      return true;
+    }
+
+    return Date.now() - observedAt.getTime() > 24 * 60 * 60 * 1000;
+  }
+
+  private resolveCuaKhauSoWarnings({
+    sourceObservedAt,
+    paymentCompleted,
+    status,
+    statusLabel
+  }: {
+    sourceObservedAt?: string | undefined;
+    paymentCompleted?: boolean | undefined;
+    status?: string | undefined;
+    statusLabel?: string | undefined;
+  }) {
+    const warnings = new Set<string>();
+
+    if (!sourceObservedAt || this.isStaleSource(sourceObservedAt)) {
+      warnings.add('STALE');
+    }
+
+    if (paymentCompleted === false) {
+      warnings.add('PAYMENT_PENDING');
+    }
+
+    const normalizedStatus = `${status ?? ''} ${statusLabel ?? ''}`.toUpperCase();
+
+    if (normalizedStatus.includes('INSPECTION') || normalizedStatus.includes('KIỂM')) {
+      warnings.add('INSPECTION');
+    }
+
+    return [...warnings];
+  }
+
+  private sanitizePublicJson(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizePublicJson(item));
+    }
+
+    const record = this.asRecord(value);
+
+    if (!record) {
+      return value;
+    }
+
+    return Object.fromEntries(
+      Object.entries(record)
+        .filter(([key]) => !this.isSensitiveSourceKey(key))
+        .map(([key, item]) => [key, this.sanitizePublicJson(item)])
+    );
+  }
+
+  private isSensitiveSourceKey(key: string) {
+    return ['rawPayload', 'accessToken', 'refreshCookies', 'password', 'token'].includes(key);
   }
 
   async getTrip(organizationId: string, tripId: string) {
@@ -459,7 +749,7 @@ export class TripsService {
       throw new NotFoundException('Trip was not found.');
     }
 
-    return this.operations.enrichTrip(trip);
+    return this.toPublicTrip(this.operations.enrichTrip(trip));
   }
 
   async createTrip(user: RequestUser, organizationId: string, dto: CreateTripDto) {

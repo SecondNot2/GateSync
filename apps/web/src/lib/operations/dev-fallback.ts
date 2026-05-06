@@ -18,6 +18,7 @@ import type {
   AdminViewData,
   CuaKhauSoViewData,
   DashboardViewData,
+  OperationsCuaKhauSoDeclaration,
   OperationsOrganizationContext,
   OperationsTripDetail,
   OperationsTripEvent,
@@ -165,6 +166,313 @@ const devCuaKhauSoDeclarations: ApiCuaKhauSoDeclarationSummary[] = [
   }
 ];
 
+function toDevTripDeclarationSignal(
+  tripId: string
+): OperationsTripSummary['declarationSignal'] | undefined {
+  const declaration = toDevCuaKhauSoDeclaration(tripId);
+
+  if (!declaration) {
+    return undefined;
+  }
+
+  return {
+    number: declaration.summary.number,
+    status: declaration.summary.status,
+    paymentStatus: declaration.payments[0]?.status ?? 'Chưa có thông tin phí',
+    freshness: declaration.freshness.label,
+    stale: declaration.freshness.stale,
+    warnings: [
+      {
+        code: 'PAYMENT_PENDING',
+        label: 'Chưa thanh toán',
+        tone: 'bg-rose-50 text-rose-700 ring-rose-100'
+      }
+    ]
+  };
+}
+
+function toDevCuaKhauSoDeclaration(tripId: string): OperationsCuaKhauSoDeclaration | undefined {
+  if (tripId !== 'gs-imp-2048') {
+    return undefined;
+  }
+
+  return {
+    summary: {
+      externalId: '84b718cf-4a72-4c7e-91d8-24e51ae53154',
+      number: '2026050300533',
+      direction: 'Nhập khẩu',
+      status: 'Chưa hoàn thành',
+      gateName: 'Hữu Nghị',
+      gateCode: 'CKHN',
+      goodsName: 'Mô-đun màn hình LCD và linh kiện máy tính',
+      plateNumber: 'FF0666',
+      trailerNumber: 'Chưa cập nhật',
+      changePlateNumber: '29E06997, 29E07714',
+      totalWeight: '3,25 kg',
+      createdAt: '03/05/2026 13:15'
+    },
+    freshness: {
+      sourceObservedAt: '03/05/2026 13:20',
+      sourceUpdatedAt: '03/05/2026 17:53',
+      lastIngestedAt: '03/05/2026 13:20',
+      label: 'Cập nhật 2 giờ trước',
+      stale: false
+    },
+    generalInfo: [
+      {
+        label: 'Doanh nghiệp nộp phí',
+        value: 'CÔNG TY CỔ PHẦN LOGISTICS THÁI VIỆT TRUNG'
+      },
+      {
+        label: 'Mã số thuế',
+        value: '0111172597'
+      },
+      {
+        label: 'Cửa khẩu',
+        value: 'Hữu Nghị'
+      },
+      {
+        label: 'Bãi tập kết',
+        value: 'Bãi Xuân Cương'
+      },
+      {
+        label: 'Người tạo',
+        value: 'Cửa khẩu Hữu Nghị 2'
+      },
+      {
+        label: 'Số tờ khai biên phòng',
+        value: '0305202600335'
+      }
+    ],
+    payments: [
+      {
+        label: 'Trạng thái thanh toán',
+        amount: 'Theo dữ liệu nguồn',
+        status: 'Chưa thanh toán',
+        paid: false
+      },
+      {
+        label: 'Phí hạ tầng',
+        amount: '600.000 ₫',
+        status: 'Có ghi nhận',
+        paid: false
+      },
+      {
+        label: 'Phí sang tải',
+        amount: '90.000 ₫',
+        status: 'Có ghi nhận',
+        paid: true
+      }
+    ],
+    checks: [
+      {
+        label: 'Kiểm dịch y tế',
+        done: true,
+        detail: '03/05/2026 13:34'
+      },
+      {
+        label: 'Kiểm dịch thực vật',
+        done: true,
+        detail: 'Đã xác nhận'
+      },
+      {
+        label: 'Kiểm dịch động vật',
+        done: true,
+        detail: 'Đã xác nhận'
+      },
+      {
+        label: 'Sang tải',
+        done: true,
+        detail: '03/05/2026 14:21'
+      }
+    ],
+    procedureSteps: [
+      {
+        step: 1,
+        label: 'Biên phòng xác nhận',
+        done: true,
+        occurredAt: '03/05/2026 13:34',
+        status: 'Hoàn tất',
+        description: 'Xe đã qua bước xác nhận biên phòng.'
+      },
+      {
+        step: 2,
+        label: 'Hải quan xác nhận đến',
+        done: true,
+        occurredAt: '03/05/2026 13:34',
+        status: 'Hoàn tất',
+        description: 'Hải quan xác nhận xe vào khu vực xử lý.'
+      },
+      {
+        step: 3,
+        label: 'Thanh toán phí',
+        done: false,
+        occurredAt: 'Chưa có dữ liệu',
+        status: 'Đang chờ',
+        description: 'Cần theo dõi trạng thái phí trong Cửa khẩu số.'
+      }
+    ],
+    representativeGoods: [
+      {
+        id: 'dev-representative-goods-1',
+        name: 'Mô-đun màn hình LCD 14 inch',
+        hsCode: 'Chưa cập nhật',
+        weight: '0 kg',
+        priceVnd: '630.000 ₫'
+      }
+    ],
+    customsDeclarations: [
+      {
+        id: 'dev-customs-declaration-1',
+        companyName: 'Tổng Công Ty Bưu Điện Việt Nam',
+        companyTaxCode: '0102595740',
+        declarationNumber: '108200889900',
+        declarationType: 'C11'
+      }
+    ],
+    goods: [
+      {
+        id: 'dev-goods-1',
+        companyName: 'Tổng Công Ty Bưu Điện Việt Nam',
+        companyTaxCode: '0102595740',
+        declarationNumber: '108200889900',
+        declarationType: 'C11',
+        items: [
+          {
+            id: 'dev-goods-item-1',
+            name: 'Mô-đun màn hình LCD 14 inch',
+            hsCode: 'Chưa cập nhật',
+            weight: '0 kg',
+            priceVnd: '630.000 ₫'
+          }
+        ]
+      }
+    ],
+    vehicles: [
+      {
+        id: 'dev-cks-vehicle-1',
+        plateNumber: 'FF0666',
+        trailerNumber: 'Chưa cập nhật',
+        driverName: 'LI CHUN',
+        vehicleType: 'Từ 4 đến dưới 10 tấn',
+        nationality: 'CN',
+        containerNumber: 'Không có dữ liệu',
+        phoneNumber: 'Chưa cập nhật',
+        statusLabel: 'Đã tới cửa khẩu',
+        transshipmentPlateNumber: '29E06997',
+        responsiblePlateNumber: 'Không có dữ liệu',
+        goodsGroup: 'Hàng điện tử',
+        note: 'Không có ghi chú',
+        transportLicenseNumber: 'C26YF0666521',
+        weight: '3.254,5 kg',
+        price: '300.000 ₫',
+        feeRate: '0.3',
+        borderGuardConfirmed: true,
+        customsArrivalConfirmed: true,
+        inParkingConfirmed: true,
+        transportLicenseConfirmed: true,
+        borderGuardAt: '03/05/2026 13:32',
+        customsArrivalAt: '03/05/2026 13:34',
+        inParkingAt: '03/05/2026 13:45',
+        transportLicenseConfirmedAt: '03/05/2026 13:50',
+        customsProcessingAt: 'Chưa có dữ liệu',
+        outParkingBorderGuardAt: 'Chưa có dữ liệu',
+        outParkingCustomsAt: 'Chưa có dữ liệu'
+      },
+      {
+        id: 'dev-cks-vehicle-2',
+        plateNumber: '29E06997',
+        trailerNumber: 'Chưa cập nhật',
+        driverName: 'Trần Văn Chính',
+        vehicleType: 'Xe tải sang tải',
+        nationality: 'VN',
+        containerNumber: 'Không có dữ liệu',
+        phoneNumber: 'Chưa cập nhật',
+        statusLabel: 'Xe nhận sang tải',
+        transshipmentPlateNumber: 'Không sang tải',
+        responsiblePlateNumber: 'Không có dữ liệu',
+        goodsGroup: 'Hàng điện tử',
+        note: 'Không có ghi chú',
+        transportLicenseNumber: 'Chưa cập nhật',
+        weight: 'Chưa cập nhật',
+        price: 'Chưa cập nhật',
+        feeRate: 'Chưa cập nhật',
+        borderGuardConfirmed: true,
+        customsArrivalConfirmed: true,
+        inParkingConfirmed: false,
+        transportLicenseConfirmed: false,
+        borderGuardAt: '03/05/2026 13:58',
+        customsArrivalAt: '03/05/2026 14:02',
+        inParkingAt: 'Chưa có dữ liệu',
+        transportLicenseConfirmedAt: 'Chưa có dữ liệu',
+        customsProcessingAt: 'Chưa có dữ liệu',
+        outParkingBorderGuardAt: 'Chưa có dữ liệu',
+        outParkingCustomsAt: 'Chưa có dữ liệu'
+      }
+    ],
+    transshipmentVehicles: [
+      {
+        id: 'dev-cks-transshipment-vehicle-1',
+        sourcePlateNumber: 'FF0666',
+        plateNumber: '29E06997',
+        driverName: 'Trần Văn Chính',
+        vehicleType: 'Xe tải sang tải',
+        areaChange: 'Bãi sang tải',
+        containerNumber: 'Không có dữ liệu',
+        trailerNumber: 'Chưa cập nhật',
+        customsDeclarationNumbers: '108200889900',
+        statusLabel: 'Đã xác nhận sang tải',
+        note: 'Không có ghi chú',
+        weight: 'Chưa cập nhật',
+        price: 'Chưa cập nhật',
+        feeRate: 'Chưa cập nhật',
+        vehicleRegistrationFormId: 'bcbad4b8-9378-4eba-beb9-bf853ef5258a',
+        borderGuardEntered: true,
+        customsEntered: true,
+        changeConfirmed: true,
+        customsOutConfirmed: false,
+        medicalQuarantineConfirmed: true,
+        borderGuardEnteredAt: '03/05/2026 13:58',
+        customsEnteredAt: '03/05/2026 14:02',
+        changeConfirmedAt: '03/05/2026 14:21',
+        customsOutAt: 'Chưa có dữ liệu',
+        medicalQuarantineAt: '03/05/2026 14:05'
+      }
+    ],
+    transshipment: {
+      licenseRegistered: true,
+      transportLicenseConfirmed: true,
+      chinaVehicleEntered: true,
+      vietnamVehicleEntered: true,
+      foreignVehicleRequired: true,
+      foreignVehicleEntered: true,
+      borderGuardLagging: false,
+      eligible: true,
+      signed: true,
+      licenseNumber: 'C26YF0666521',
+      statusLabel: 'Đã ký/xác nhận sang tải',
+      unmetConditions: [],
+      borderGuardLaggedSince: 'Chưa có dữ liệu',
+      eligibleAt: '03/05/2026 13:34',
+      signedAt: '03/05/2026 14:21'
+    },
+    eventCandidates: [
+      {
+        eventType: 'DECLARATION_SUBMITTED',
+        occurredAt: '03/05/2026 13:19',
+        note: 'Cửa khẩu số ghi nhận đăng ký tờ khai vận tải.',
+        confidence: '96%'
+      },
+      {
+        eventType: 'FEE_PAID',
+        occurredAt: '03/05/2026 14:48',
+        note: 'Nguồn ghi nhận một phần phí đã thanh toán.',
+        confidence: '92%'
+      }
+    ]
+  };
+}
+
 function toDevOrganization(
   reason: string,
   activeTripCount?: number
@@ -212,7 +520,7 @@ function toDevOrganization(
 }
 
 function toDevTripSummary(trip: (typeof demoTrips)[number]): OperationsTripSummary {
-  return {
+  const summary: OperationsTripSummary = {
     id: trip.id,
     tripCode: trip.tripCode,
     tripType: trip.tripType,
@@ -237,10 +545,17 @@ function toDevTripSummary(trip: (typeof demoTrips)[number]): OperationsTripSumma
     availableManualActions: getDevManualActions(trip.currentStatus),
     eventCount: trip.events.length
   };
+  const declarationSignal = toDevTripDeclarationSignal(trip.id);
+
+  if (declarationSignal) {
+    summary.declarationSignal = declarationSignal;
+  }
+
+  return summary;
 }
 
 function toDevTripDetail(trip: (typeof demoTrips)[number]): OperationsTripDetail {
-  return {
+  const detail: OperationsTripDetail = {
     ...toDevTripSummary(trip),
     shipment: trip.shipment,
     declaration: trip.declaration,
@@ -259,6 +574,13 @@ function toDevTripDetail(trip: (typeof demoTrips)[number]): OperationsTripDetail
       })
     )
   };
+  const cksDeclaration = toDevCuaKhauSoDeclaration(trip.id);
+
+  if (cksDeclaration) {
+    detail.cuaKhauSoDeclaration = cksDeclaration;
+  }
+
+  return detail;
 }
 
 function toDevTripEvent(event: (typeof recentTripEvents)[number]): OperationsTripEvent {
@@ -325,6 +647,8 @@ function matchesFilters(trip: (typeof demoTrips)[number], filters: ListTripsPara
 
   return [
     trip.tripCode,
+    toDevTripDeclarationSignal(trip.id)?.number ?? '',
+    toDevCuaKhauSoDeclaration(trip.id)?.summary.goodsName ?? '',
     trip.vehicle.plateNumber,
     trip.driver.name,
     trip.driver.phone,

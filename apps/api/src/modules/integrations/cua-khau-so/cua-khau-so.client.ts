@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type {
   CuaKhauSoDeclarationDetailResponse,
+  CuaKhauSoEmptyVehicleLogResponse,
   CuaKhauSoDeclarationListResponse,
   CuaKhauSoExternalListParams,
   CuaKhauSoLoginRequest,
@@ -129,6 +130,17 @@ export class CuaKhauSoClient {
     return this.authenticatedGet(session, `/api/registration-transport/${safeId}`);
   }
 
+  async getEmptyVehicleLog(
+    session: CuaKhauSoSession,
+    vehicleRegistrationFormId: string
+  ): Promise<CuaKhauSoEmptyVehicleLogResponse> {
+    const safeId = this.normalizeExternalId(vehicleRegistrationFormId);
+    return this.authenticatedGet(
+      session,
+      `/api/VehicleRegistrationForm/get-log-empty-vehicle-form/${safeId}`
+    );
+  }
+
   private async authenticatedGet<T>(session: CuaKhauSoSession, path: string): Promise<T> {
     this.assertReadOnlyPath(path);
     let response = await this.request('GET', path, {
@@ -224,6 +236,9 @@ export class CuaKhauSoClient {
     const isAllowed =
       pathname === '/api/registration-transport/get-all-regtrans-lite-v2' ||
       pathname === '/api/registration-transport/get-registration-transport-step' ||
+      /^\/api\/VehicleRegistrationForm\/get-log-empty-vehicle-form\/[0-9a-fA-F-]{36}$/.test(
+        pathname
+      ) ||
       /^\/api\/registration-transport\/[0-9a-fA-F-]{36}$/.test(pathname);
 
     if (!isAllowed) {

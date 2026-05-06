@@ -467,8 +467,8 @@ function getRoleDashboardSummary(data: DashboardViewData): RoleDashboardSummary 
       title: 'Bàn xử lý chứng từ',
       description:
         'Tập trung vào tờ khai, kiểm hóa, phí và dữ liệu Cửa khẩu số đã được doanh nghiệp ủy quyền.',
-      primaryHref: '/integrations/cua-khau-so',
-      primaryLabel: 'Mở Cửa khẩu số',
+      primaryHref: '/trips?status=CUSTOMS_PROCESSING',
+      primaryLabel: 'Mở chuyến hải quan',
       secondaryHref: '/trips?status=CUSTOMS_PROCESSING',
       secondaryLabel: 'Lọc chuyến hải quan',
       tasks: [

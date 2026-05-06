@@ -9,7 +9,8 @@ export const protectedPathPrefixes = [
   '/driver',
   '/trips',
   '/admin',
-  '/integrations'
+  '/integrations',
+  '/settings'
 ] as const;
 
 export type LoginReason = 'auth_required' | 'session_expired' | 'signed_out';

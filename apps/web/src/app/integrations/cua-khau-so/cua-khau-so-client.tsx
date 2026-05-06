@@ -277,10 +277,10 @@ export function CuaKhauSoClient() {
 
   return (
     <AppShell
-      activeNav="integrations"
-      eyebrow="Tích hợp dữ liệu"
-      title="Cửa khẩu số Lạng Sơn"
-      description="Theo dõi bản sao nội bộ từ Cửa khẩu số, độ mới dữ liệu và các lần đối chiếu vào timeline GateSync."
+      activeNav="settings"
+      eyebrow="Cài đặt cấu hình"
+      title="Cấu hình Cửa khẩu số"
+      description="Quản trị kết nối chỉ đọc, độ mới bản sao nội bộ và các lần đối chiếu từ Cửa khẩu số vào GateSync."
       {...shellProps}
       action={
         <button
@@ -431,13 +431,13 @@ export function CuaKhauSoClient() {
                   Tự động đồng bộ
                 </p>
                 <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                  Worker nền giữ bản sao nội bộ
+                  Cập nhật tờ khai đang xử lý
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                  Worker backend dùng credential đã mã hóa để tự đọc các tờ khai chưa hoàn thành
-                  trong 7 ngày gần nhất, cập nhật bản sao nội bộ, tạo sự kiện timeline idempotent và
-                  tự liên kết xe/tài xế khi khớp hồ sơ nội bộ. Không có thao tác ghi ngược lên hệ
-                  thống nguồn.
+                  Worker backend chạy theo lịch thưa để tự đọc các tờ khai chưa hoàn thành trong 7
+                  ngày gần nhất, cập nhật bản sao nội bộ, tạo sự kiện timeline idempotent và tự liên
+                  kết xe/tài xế khi khớp hồ sơ nội bộ. Không có thao tác ghi ngược lên hệ thống
+                  nguồn.
                 </p>
               </div>
               <Button

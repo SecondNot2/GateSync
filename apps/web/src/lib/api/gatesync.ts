@@ -13,6 +13,7 @@ import type {
   ApiIntegrationSyncRun,
   ApiMembership,
   ApiMembershipInvitation,
+  ApiNotification,
   ApiOrganization,
   ApiTripDetail,
   ApiTripEvent,
@@ -67,6 +68,12 @@ function buildCuaKhauSoQuery(params: ListCuaKhauSoDeclarationsParams = {}) {
 export const gatesyncApi = {
   getMe: ({ accessToken }: AuthenticatedOptions) =>
     apiClient.get<ApiCurrentUser>('/me', { accessToken }),
+
+  listNotifications: ({ accessToken }: AuthenticatedOptions) =>
+    apiClient.get<ApiNotification[]>('/notifications', { accessToken }),
+
+  markNotificationRead: (notificationId: string, { accessToken }: AuthenticatedOptions) =>
+    apiClient.patch<ApiNotification>(`/notifications/${notificationId}/read`, {}, { accessToken }),
 
   listOrganizations: ({ accessToken }: AuthenticatedOptions) =>
     apiClient.get<ApiOrganization[]>('/organizations', { accessToken }),

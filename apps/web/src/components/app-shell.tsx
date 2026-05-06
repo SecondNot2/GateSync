@@ -4,11 +4,12 @@ import Image from 'next/image';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { NotificationCenter } from '@/components/notification-center';
 import { SignOutButton } from '@/components/sign-out-button';
 import type { OperationsOrganizationContext } from '@/lib/operations/view-model';
 import { membershipRoleLabels, organizationTypeLabels } from '@/lib/ui-labels';
 
-type AppNavKey = 'dashboard' | 'trips' | 'integrations' | 'admin';
+type AppNavKey = 'dashboard' | 'trips' | 'integrations' | 'settings' | 'admin';
 
 type AppShellProps = {
   activeNav: AppNavKey;
@@ -66,11 +67,11 @@ export function AppShell({
 
   if (currentUser?.canUseCuaKhauSoIntegration !== false) {
     navItems.push({
-      key: 'integrations',
-      label: 'Tích hợp dữ liệu',
-      shortLabel: 'Tích hợp',
-      href: '/integrations/cua-khau-so',
-      children: [{ label: 'Cửa khẩu số', href: '/integrations/cua-khau-so' }]
+      key: 'settings',
+      label: 'Cài đặt cấu hình',
+      shortLabel: 'Cấu hình',
+      href: '/settings/cua-khau-so',
+      children: [{ label: 'Cửa khẩu số', href: '/settings/cua-khau-so' }]
     });
   }
 
@@ -105,7 +106,10 @@ export function AppShell({
               <p className="truncate text-xs text-slate-500">{currentOrganization.name}</p>
             </div>
           </Link>
-          <SessionMenu currentUser={currentUser} compact />
+          <div className="flex items-center gap-2">
+            <NotificationCenter userId={currentUser?.id} />
+            <SessionMenu currentUser={currentUser} compact />
+          </div>
         </header>
 
         <aside className="hidden overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white/95 p-3 shadow-soft backdrop-blur lg:sticky lg:top-3 lg:block lg:h-[calc(100vh-1.5rem)]">
@@ -269,6 +273,7 @@ export function AppShell({
                 </details>
               </div>
               <div className="flex flex-wrap gap-2 lg:flex-shrink-0">
+                <NotificationCenter userId={currentUser?.id} />
                 <SessionMenu currentUser={currentUser} />
                 {action}
               </div>

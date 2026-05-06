@@ -8,6 +8,7 @@ import type {
   CuaKhauSoDeclarationSummary,
   CuaKhauSoEventCandidate,
   CuaKhauSoEventCandidateView,
+  CuaKhauSoChangeVehicleDetail,
   CuaKhauSoGoodsGroup,
   CuaKhauSoMappedList,
   CuaKhauSoPaymentInfo,
@@ -98,6 +99,11 @@ export class CuaKhauSoMapper {
         'Chưa cập nhật'
       ),
       arrivalAt: arrivalAt ?? 'Chưa cập nhật',
+      createdBy: {
+        username: this.nonEmpty(detail.createdUser?.username, 'Chưa cập nhật'),
+        displayName: this.nonEmpty(detail.createdUser?.displayName, 'Chưa cập nhật'),
+        phoneNumber: this.nonEmpty(detail.createdUser?.phoneNumber, 'Chưa cập nhật')
+      },
       feePayingCompany: {
         name: this.nonEmpty(detail.feePayingCompanyName, detail.company?.name, 'Chưa cập nhật'),
         taxCode: this.nonEmpty(
@@ -120,8 +126,10 @@ export class CuaKhauSoMapper {
       infrastructureCharges: detail.infrastructureCharges ?? 0,
       transferCharges: detail.transferCharges ?? 0,
       transshipment,
-      vehicles: (detail.registrationTransportDetails ?? []).map((vehicle) =>
-        this.mapVehicle(vehicle)
+      checks: this.resolveChecks(detail),
+      vehicles: this.mapVehicles(detail),
+      transshipmentVehicles: (detail.changeVehicle?.changeVehicleDetails ?? []).map((vehicle) =>
+        this.mapTransshipmentVehicle(vehicle)
       ),
       goods: (detail.registrationTransportGoods ?? []).map((group) => this.mapGoodsGroup(group)),
       procedureSteps: this.deriveProcedureSteps(detail),
@@ -175,12 +183,28 @@ export class CuaKhauSoMapper {
   }
 
   deriveProcedureSteps(detail: CuaKhauSoDeclarationDetail): CuaKhauSoProcedureStep[] {
-    const vehicle = detail.registrationTransportDetails?.[0];
+    const vehicle = this.resolvePrimaryVehicle(detail);
+    const vehicleEntered = Boolean(
+      vehicle?.checkBorderGuard && vehicle.confirmArrivalVehicleCustoms
+    );
+    const customsArrivedWithoutBorderGuard = Boolean(
+      vehicle?.confirmArrivalVehicleCustoms && !vehicle.checkBorderGuard
+    );
     const steps: CuaKhauSoProcedureStep[] = [
       {
         step: 1,
         label: procedureStepLabels[0],
-        done: Boolean(vehicle?.checkBorderGuard && vehicle.confirmArrivalVehicleCustoms)
+        done: vehicleEntered,
+        status: vehicleEntered
+          ? 'DONE'
+          : customsArrivedWithoutBorderGuard
+            ? 'WAITING_AUTHORITY'
+            : 'PENDING',
+        description: vehicleEntered
+          ? 'CBBP và CBHQ đã cùng xác nhận xe vào cửa khẩu.'
+          : customsArrivedWithoutBorderGuard
+            ? 'CBHQ đã xác nhận xe vào nhưng CBBP chưa tích xác nhận; chưa tính là xe đã vào.'
+            : 'Chưa đủ xác nhận CBBP và CBHQ.'
       },
       {
         step: 2,
@@ -218,8 +242,17 @@ export class CuaKhauSoMapper {
             : 'Chưa có xác nhận rời cửa khẩu.'
       }
     ];
+    const stepOneOccurredAt = vehicleEntered
+      ? this.latestIsoString(
+          vehicle?.confirmArrivalVehicleCustomsTime,
+          vehicle?.checkBorderGuardTime
+        )
+      : this.firstNonEmpty(
+          vehicle?.confirmArrivalVehicleCustomsTime,
+          vehicle?.checkBorderGuardTime
+        );
     const occurredAtValues = [
-      this.firstNonEmpty(vehicle?.confirmArrivalVehicleCustomsTime, vehicle?.checkBorderGuardTime),
+      stepOneOccurredAt,
       vehicle?.confirmInParkingCustomsTime,
       vehicle?.checkCustomsTime,
       this.resolvePaymentTime(detail.paymentOfTax),
@@ -252,7 +285,7 @@ export class CuaKhauSoMapper {
     detail: CuaKhauSoDeclarationDetail,
     organizationId: string
   ): CuaKhauSoEventCandidate[] {
-    const vehicle = detail.registrationTransportDetails?.[0];
+    const vehicle = this.resolvePrimaryVehicle(detail);
     const candidates: CuaKhauSoEventCandidate[] = [];
 
     this.addCandidate(
@@ -272,7 +305,10 @@ export class CuaKhauSoMapper {
         organizationId,
         detail,
         'BORDER_GATE_ENTRY_CONFIRMED',
-        this.firstNonEmpty(vehicle.confirmArrivalVehicleCustomsTime, vehicle.checkBorderGuardTime),
+        this.latestIsoString(
+          vehicle.confirmArrivalVehicleCustomsTime,
+          vehicle.checkBorderGuardTime
+        ),
         'Cửa khẩu số xác nhận xe đã vào khu vực cửa khẩu.',
         0.9,
         'border-gate-entry'
@@ -436,7 +472,23 @@ export class CuaKhauSoMapper {
     };
   }
 
-  private mapVehicle(vehicle: CuaKhauSoVehicleDetail) {
+  private mapVehicles(detail: CuaKhauSoDeclarationDetail) {
+    const sourceVehicles = (detail.registrationTransportDetails ?? []).map((vehicle) =>
+      this.mapVehicle(vehicle, detail)
+    );
+    const sourcePlateNumbers = new Set(sourceVehicles.map((vehicle) => vehicle.plateNumber));
+    const receivingVehicles = (detail.changeVehicle?.changeVehicleDetails ?? [])
+      .map((vehicle) => this.mapReceivingVehicleAsVehicle(vehicle, detail))
+      .filter((vehicle) => !sourcePlateNumbers.has(vehicle.plateNumber));
+
+    return [...sourceVehicles, ...receivingVehicles];
+  }
+
+  private mapVehicle(vehicle: CuaKhauSoVehicleDetail, detail: CuaKhauSoDeclarationDetail) {
+    const transshipmentPlateNumbers = (detail.changeVehicle?.changeVehicleDetails ?? [])
+      .filter((changeVehicle) => changeVehicle.licencePlate === vehicle.licencePlate)
+      .map((changeVehicle) => this.trimToUndefined(changeVehicle.licencePlateChange))
+      .filter((value): value is string => Boolean(value));
     const mapped: CuaKhauSoDeclarationDetailView['vehicles'][number] = {
       plateNumber: this.nonEmpty(vehicle.licencePlate, 'Chưa cập nhật'),
       trailerNumber: this.nonEmpty(vehicle.numberOfMooc, 'Chưa cập nhật'),
@@ -446,7 +498,26 @@ export class CuaKhauSoMapper {
         vehicle.vehicleType?.code,
         'Chưa cập nhật'
       ),
-      nationality: this.nonEmpty(vehicle.vehicleNationalityType, 'Chưa cập nhật')
+      nationality: this.nonEmpty(vehicle.vehicleNationalityType, 'Chưa cập nhật'),
+      containerNumber: this.nonEmpty(vehicle.numberOfContainer, 'Không có dữ liệu'),
+      phoneNumber: this.nonEmpty(vehicle.driverPhone, 'Chưa cập nhật'),
+      statusLabel: this.resolveVehicleStatusLabel(vehicle),
+      transshipmentPlateNumber: this.nonEmpty(
+        transshipmentPlateNumbers.join(', '),
+        'Không sang tải'
+      ),
+      responsiblePlateNumber: 'Không có dữ liệu',
+      goodsGroup: this.nonEmpty(detail.companyGoodsName, 'Chưa cập nhật'),
+      note: this.nonEmpty(
+        vehicle.description,
+        vehicle.confirmTransportLicenseNote,
+        'Không có ghi chú'
+      ),
+      transportLicenseNumber: this.resolveTransportLicenseNumber(detail, vehicle),
+      borderGuardConfirmed: Boolean(vehicle.checkBorderGuard),
+      customsArrivalConfirmed: Boolean(vehicle.confirmArrivalVehicleCustoms),
+      inParkingConfirmed: Boolean(vehicle.confirmInParkingCustoms),
+      transportLicenseConfirmed: Boolean(vehicle.confirmTransportLicense)
     };
 
     if (vehicle.id) {
@@ -457,7 +528,187 @@ export class CuaKhauSoMapper {
       mapped.weight = vehicle.weight;
     }
 
+    if (typeof vehicle.price === 'number') {
+      mapped.price = vehicle.price;
+    }
+
+    if (typeof vehicle.feeRate === 'number') {
+      mapped.feeRate = vehicle.feeRate;
+    }
+
+    this.assignIso(mapped, 'borderGuardAt', vehicle.checkBorderGuardTime);
+    this.assignIso(mapped, 'customsArrivalAt', vehicle.confirmArrivalVehicleCustomsTime);
+    this.assignIso(mapped, 'inParkingAt', vehicle.confirmInParkingCustomsTime);
+    this.assignIso(mapped, 'transportLicenseConfirmedAt', vehicle.confirmTransportLicenseTime);
+    this.assignIso(mapped, 'customsProcessingAt', vehicle.checkCustomsTime);
+    this.assignIso(mapped, 'outParkingBorderGuardAt', vehicle.confirmOutParkingBorderGuardTime);
+    this.assignIso(mapped, 'outParkingCustomsAt', vehicle.confirmOutParkingCustomsTime);
+
     return mapped;
+  }
+
+  private mapReceivingVehicleAsVehicle(
+    vehicle: CuaKhauSoChangeVehicleDetail,
+    detail: CuaKhauSoDeclarationDetail
+  ) {
+    const mapped: CuaKhauSoDeclarationDetailView['vehicles'][number] = {
+      plateNumber: this.nonEmpty(vehicle.licencePlateChange, 'Chưa cập nhật'),
+      trailerNumber: this.nonEmpty(vehicle.numberOfMooc, 'Chưa cập nhật'),
+      driverName: this.nonEmpty(vehicle.driverName, 'Chưa cập nhật'),
+      vehicleType: this.nonEmpty(vehicle.vehicleTypeEnumText, 'Chưa cập nhật'),
+      nationality: 'VN',
+      containerNumber: this.nonEmpty(vehicle.numberOfContainerOrMooc, 'Không có dữ liệu'),
+      phoneNumber: 'Chưa cập nhật',
+      statusLabel: vehicle.checkChangeVehicle ? 'Đã xác nhận sang tải' : 'Xe VN nhận sang tải',
+      transshipmentPlateNumber: 'Không sang tải',
+      responsiblePlateNumber: 'Không có dữ liệu',
+      goodsGroup: this.nonEmpty(detail.companyGoodsName, 'Chưa cập nhật'),
+      note: this.nonEmpty(vehicle.description, 'Không có ghi chú'),
+      transportLicenseNumber: this.resolveReceivingVehicleLicenseNumber(detail, vehicle),
+      borderGuardConfirmed: Boolean(vehicle.emptyVehicleEnteredGateTime),
+      customsArrivalConfirmed: Boolean(vehicle.emptyVehicleEnteredGateCustomsTime),
+      inParkingConfirmed: Boolean(vehicle.checkChangeVehicle),
+      transportLicenseConfirmed: false
+    };
+
+    if (vehicle.id) {
+      mapped.id = vehicle.id;
+    }
+
+    if (typeof vehicle.weight === 'number') {
+      mapped.weight = vehicle.weight;
+    }
+
+    if (typeof vehicle.price === 'number') {
+      mapped.price = vehicle.price;
+    }
+
+    if (typeof vehicle.feeRate === 'number') {
+      mapped.feeRate = vehicle.feeRate;
+    }
+
+    this.assignIso(mapped, 'borderGuardAt', vehicle.emptyVehicleEnteredGateTime);
+    this.assignIso(mapped, 'customsArrivalAt', vehicle.emptyVehicleEnteredGateCustomsTime);
+    this.assignIso(mapped, 'inParkingAt', vehicle.checkChangeVehicleTime);
+    this.assignIso(mapped, 'customsProcessingAt', vehicle.checkChangeVehicleTime);
+    this.assignIso(
+      mapped,
+      'outParkingCustomsAt',
+      this.firstNonEmpty(
+        vehicle.confirmOutOfParkinglotTimeByCustoms,
+        vehicle.checkChangeVehicleOutGateCustomVNTime
+      )
+    );
+
+    return mapped;
+  }
+
+  private mapTransshipmentVehicle(vehicle: CuaKhauSoChangeVehicleDetail) {
+    const customsOutAt = this.firstNonEmpty(
+      vehicle.confirmOutOfParkinglotTimeByCustoms,
+      vehicle.checkChangeVehicleOutGateCustomVNTime
+    );
+    const mapped: CuaKhauSoDeclarationDetailView['transshipmentVehicles'][number] = {
+      sourcePlateNumber: this.nonEmpty(vehicle.licencePlate, 'Chưa cập nhật'),
+      plateNumber: this.nonEmpty(vehicle.licencePlateChange, 'Chưa cập nhật'),
+      driverName: this.nonEmpty(vehicle.driverName, 'Chưa cập nhật'),
+      vehicleType: this.nonEmpty(vehicle.vehicleTypeEnumText, 'Chưa cập nhật'),
+      areaChange: this.nonEmpty(vehicle.areaChange, 'Chưa cập nhật'),
+      containerNumber: this.nonEmpty(vehicle.numberOfContainerOrMooc, 'Không có dữ liệu'),
+      trailerNumber: this.nonEmpty(vehicle.numberOfMooc, 'Chưa cập nhật'),
+      customsDeclarationNumbers: this.nonEmpty(
+        vehicle.numberHQs?.filter(Boolean).join(', '),
+        'Chưa cập nhật'
+      ),
+      statusLabel: vehicle.checkChangeVehicle ? 'Đã xác nhận sang tải' : 'Chưa xác nhận sang tải',
+      note: this.nonEmpty(vehicle.description, 'Không có ghi chú'),
+      borderGuardEntered: Boolean(vehicle.emptyVehicleEnteredGateTime),
+      customsEntered: Boolean(vehicle.emptyVehicleEnteredGateCustomsTime),
+      changeConfirmed: Boolean(vehicle.checkChangeVehicle),
+      customsOutConfirmed: Boolean(
+        vehicle.confirmOutOfParkinglotByCustoms || vehicle.checkChangeVehicleOutGateCustomVN
+      ),
+      medicalQuarantineConfirmed: Boolean(vehicle.checkMedicalQuarantine)
+    };
+
+    if (vehicle.id) {
+      mapped.id = vehicle.id;
+    }
+
+    if (vehicle.vehicleRegistrationFormId) {
+      mapped.vehicleRegistrationFormId = vehicle.vehicleRegistrationFormId;
+    }
+
+    if (typeof vehicle.weight === 'number') {
+      mapped.weight = vehicle.weight;
+    }
+
+    if (typeof vehicle.price === 'number') {
+      mapped.price = vehicle.price;
+    }
+
+    if (typeof vehicle.feeRate === 'number') {
+      mapped.feeRate = vehicle.feeRate;
+    }
+
+    this.assignIso(mapped, 'borderGuardEnteredAt', vehicle.emptyVehicleEnteredGateTime);
+    this.assignIso(mapped, 'customsEnteredAt', vehicle.emptyVehicleEnteredGateCustomsTime);
+    this.assignIso(mapped, 'changeConfirmedAt', vehicle.checkChangeVehicleTime);
+    this.assignIso(mapped, 'customsOutAt', customsOutAt);
+    this.assignIso(mapped, 'medicalQuarantineAt', vehicle.checkMedicalQuarantineTime);
+
+    return mapped;
+  }
+
+  private resolveVehicleStatusLabel(vehicle: CuaKhauSoVehicleDetail) {
+    if (vehicle.confirmOutTQ || vehicle.confirmOutVN) {
+      return 'Đã rời cửa khẩu';
+    }
+
+    if (vehicle.confirmOutParkingBorderGuard || vehicle.confirmOutParkingCustoms) {
+      return 'Đã rời bãi';
+    }
+
+    if (vehicle.checkChangeVehicle) {
+      return 'Đã xác nhận sang tải';
+    }
+
+    if (vehicle.confirmInParkingCustoms) {
+      return 'Đã vào bãi';
+    }
+
+    if (vehicle.checkBorderGuard && vehicle.confirmArrivalVehicleCustoms) {
+      return 'Đã tới cửa khẩu';
+    }
+
+    if (vehicle.confirmArrivalVehicleCustoms && !vehicle.checkBorderGuard) {
+      return 'Chờ CBBP xác nhận';
+    }
+
+    return 'Đang theo dõi';
+  }
+
+  private resolveTransportLicenseNumber(
+    detail: CuaKhauSoDeclarationDetail,
+    vehicle: CuaKhauSoVehicleDetail
+  ) {
+    const form = detail.businessVehicleRegistrationForms?.find(
+      (item) =>
+        !item.registrationTransportDetailId || item.registrationTransportDetailId === vehicle.id
+    );
+
+    return this.nonEmpty(form?.internationalTransportationLicenseNumber, 'Chưa cập nhật');
+  }
+
+  private resolveReceivingVehicleLicenseNumber(
+    detail: CuaKhauSoDeclarationDetail,
+    vehicle: CuaKhauSoChangeVehicleDetail
+  ) {
+    const form = detail.businessVehicleRegistrationForms?.find(
+      (item) => item.changeVehicleDetailId === vehicle.id
+    );
+
+    return this.nonEmpty(form?.internationalTransportationLicenseNumber, 'Chưa cập nhật');
   }
 
   private mapGoodsGroup(group: CuaKhauSoGoodsGroup) {
@@ -516,26 +767,83 @@ export class CuaKhauSoMapper {
   }
 
   private resolveTransshipment(detail: CuaKhauSoDeclarationDetail) {
-    const vehicle = detail.registrationTransportDetails?.[0];
+    const vehicle = this.resolvePrimaryVehicle(detail);
     const licenseForm = detail.businessVehicleRegistrationForms?.[0];
     const licenseNumber = this.nonEmpty(licenseForm?.internationalTransportationLicenseNumber);
     const licenseRegistered = Boolean(licenseForm && licenseNumber);
-    const vehicleInParking = Boolean(vehicle?.confirmInParkingCustoms);
-    const transportLicenseConfirmed = Boolean(vehicle?.confirmTransportLicense);
-    const eligible = vehicleInParking && licenseRegistered && transportLicenseConfirmed;
-    const signed = eligible && Boolean(vehicle?.checkChangeVehicle);
-    const eligibleAt = this.latestIsoString(
-      vehicle?.confirmInParkingCustomsTime,
-      vehicle?.confirmTransportLicenseTime
+    const chinaVehicleEntered = Boolean(
+      vehicle?.checkBorderGuard && vehicle.confirmArrivalVehicleCustoms
     );
-    const signedAt = this.firstNonEmpty(vehicle?.checkChangeVehicleTime, eligibleAt);
+    const foreignVehicleRequired = Boolean(
+      vehicle && this.nonEmpty(vehicle.vehicleNationalityType).toUpperCase() !== 'VN'
+    );
+    const foreignVehicleEntered = !foreignVehicleRequired || chinaVehicleEntered;
+    const transshipmentVehicles = detail.changeVehicle?.changeVehicleDetails ?? [];
+    const vietnamVehicleEntered = transshipmentVehicles.some(
+      (changeVehicle) =>
+        Boolean(changeVehicle.emptyVehicleEnteredGateTime) &&
+        Boolean(changeVehicle.emptyVehicleEnteredGateCustomsTime)
+    );
+    const transportLicenseConfirmed = Boolean(vehicle?.confirmTransportLicense);
+    const borderGuardLagging = Boolean(
+      vehicle?.confirmArrivalVehicleCustoms && !vehicle.checkBorderGuard
+    );
+    const unmetConditions = [
+      ...(licenseRegistered ? [] : ['Chưa có giấy phép vận tải mục 9.']),
+      ...(transportLicenseConfirmed ? [] : ['Chưa xác nhận giấy phép vận tải mục 11.']),
+      ...(foreignVehicleEntered ? [] : ['Xe không VN chưa đủ xác nhận CBBP và CBHQ vào cửa khẩu.']),
+      ...(vietnamVehicleEntered ? [] : ['Xe VN nhận sang tải chưa đủ thời gian vào BP/HQ.'])
+    ];
+    const eligible =
+      licenseRegistered &&
+      transportLicenseConfirmed &&
+      foreignVehicleEntered &&
+      vietnamVehicleEntered;
+    const signed =
+      eligible &&
+      Boolean(
+        detail.checkAllChangeVehicle ||
+        transshipmentVehicles.some((item) => item.checkChangeVehicle)
+      );
+    const eligibleAt = this.latestIsoString(
+      vehicle?.checkBorderGuardTime,
+      vehicle?.confirmArrivalVehicleCustomsTime,
+      vehicle?.confirmTransportLicenseTime,
+      ...transshipmentVehicles.flatMap((item) => [
+        item.emptyVehicleEnteredGateTime,
+        item.emptyVehicleEnteredGateCustomsTime
+      ])
+    );
+    const signedAt = this.firstNonEmpty(
+      ...transshipmentVehicles.map((item) => item.checkChangeVehicleTime),
+      eligibleAt
+    );
     const transshipment: CuaKhauSoDeclarationDetailView['transshipment'] = {
       licenseRegistered,
       transportLicenseConfirmed,
+      chinaVehicleEntered,
+      vietnamVehicleEntered,
+      foreignVehicleRequired,
+      foreignVehicleEntered,
+      borderGuardLagging,
       eligible,
       signed,
-      licenseNumber: licenseNumber || 'Chưa cập nhật'
+      licenseNumber: licenseNumber || 'Chưa cập nhật',
+      statusLabel: eligible
+        ? signed
+          ? 'Đã ký/xác nhận sang tải'
+          : 'Đủ điều kiện ký sang tải'
+        : 'Chưa đủ điều kiện ký sang tải',
+      unmetConditions
     };
+
+    if (borderGuardLagging) {
+      this.assignIso(
+        transshipment,
+        'borderGuardLaggedSince',
+        vehicle?.confirmArrivalVehicleCustomsTime
+      );
+    }
 
     if (eligibleAt) {
       transshipment.eligibleAt = eligibleAt;
@@ -546,6 +854,69 @@ export class CuaKhauSoMapper {
     }
 
     return transshipment;
+  }
+
+  private resolvePrimaryVehicle(detail: CuaKhauSoDeclarationDetail) {
+    return (
+      detail.registrationTransportDetails?.find(
+        (vehicle) => this.nonEmpty(vehicle.vehicleNationalityType).toUpperCase() !== 'VN'
+      ) ?? detail.registrationTransportDetails?.[0]
+    );
+  }
+
+  private assignIso<T extends object>(
+    target: T,
+    key: keyof T & string,
+    value: string | null | undefined
+  ) {
+    const isoString = this.toIsoString(value);
+
+    if (isoString) {
+      (target as Record<string, string>)[key] = isoString;
+    }
+  }
+
+  private resolveChecks(detail: CuaKhauSoDeclarationDetail) {
+    const vehicle = detail.registrationTransportDetails?.[0];
+
+    return [
+      {
+        key: 'medical',
+        label: 'Kiểm dịch y tế',
+        done: Boolean(detail.checkAllMedicalQuarantine || vehicle?.checkMedicalQuarantine),
+        detail: this.nonEmpty(
+          vehicle?.checkMedicalQuarantineTime,
+          detail.checkAllMedicalQuarantine ? 'Đã xác nhận' : 'Chưa xác nhận'
+        )
+      },
+      {
+        key: 'phytosanitary',
+        label: 'Kiểm dịch thực vật',
+        done: Boolean(detail.checkPhytosanitary || vehicle?.checkPhytosanitary),
+        detail: this.nonEmpty(
+          vehicle?.checkPhytosanitaryTime,
+          detail.checkPhytosanitary ? 'Đã xác nhận' : 'Chưa xác nhận'
+        )
+      },
+      {
+        key: 'animal',
+        label: 'Kiểm dịch động vật',
+        done: Boolean(detail.checkAnimalQuarantine || vehicle?.checkAnimalQuarantine),
+        detail: this.nonEmpty(
+          vehicle?.checkAnimalQuarantineTime,
+          detail.checkAnimalQuarantine ? 'Đã xác nhận' : 'Chưa xác nhận'
+        )
+      },
+      {
+        key: 'transshipment',
+        label: 'Sang tải',
+        done: Boolean(detail.checkAllChangeVehicle || vehicle?.checkChangeVehicle),
+        detail: this.nonEmpty(
+          vehicle?.checkChangeVehicleTime,
+          detail.checkAllChangeVehicle ? 'Đã xác nhận' : 'Chưa xác nhận'
+        )
+      }
+    ];
   }
 
   private mapDirection(value: unknown): TripDirection {

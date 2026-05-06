@@ -69,6 +69,16 @@ export type CuaKhauSoDeclarationDetailResponse = {
   [key: string]: unknown;
 };
 
+export type CuaKhauSoEmptyVehicleLogResponse = {
+  data?: CuaKhauSoEmptyVehicleLogItem[] | null;
+  [key: string]: unknown;
+};
+
+export type CuaKhauSoEmptyVehicleLogItem = {
+  value?: string | Record<string, unknown> | null;
+  [key: string]: unknown;
+};
+
 export type CuaKhauSoDeclarationDetail = CuaKhauSoDeclarationLite & {
   numberOfDeclarationBorderGuard?: string | null;
   arrivalDate?: string | null;
@@ -90,6 +100,10 @@ export type CuaKhauSoDeclarationDetail = CuaKhauSoDeclarationLite & {
   checkAllConfirmOutVN?: boolean | null;
   checkAllMedicalQuarantine?: boolean | null;
   checkAllChangeVehicle?: boolean | null;
+  checkPhytosanitary?: boolean | null;
+  checkPhytosanitaryTime?: string | null;
+  checkAnimalQuarantine?: boolean | null;
+  checkAnimalQuarantineTime?: string | null;
   registrationTransportDetails?: CuaKhauSoVehicleDetail[] | null;
   registrationTransportGoods?: CuaKhauSoGoodsGroup[] | null;
   businessVehicleRegistrationForms?: CuaKhauSoBusinessVehicleRegistrationForm[] | null;
@@ -148,14 +162,23 @@ export type CuaKhauSoVehicleBrief = {
 export type CuaKhauSoVehicleDetail = CuaKhauSoVehicleBrief & {
   id?: string;
   driverName?: string | null;
+  driverPhone?: string | null;
   vehicleType?: {
     id?: string;
     name?: string | null;
     code?: string | null;
   } | null;
   weight?: number | null;
+  price?: number | null;
+  feeRate?: number | null;
+  numberOfContainer?: string | null;
   isChangeVehicle?: boolean | null;
   vehicleNationalityType?: 'VN' | 'CN' | string | null;
+  checkPhytosanitary?: boolean | null;
+  checkPhytosanitaryTime?: string | null;
+  descriptionRequestPhytosanitary?: string | null;
+  checkAnimalQuarantine?: boolean | null;
+  checkAnimalQuarantineTime?: string | null;
   checkMedicalQuarantine?: boolean | null;
   checkMedicalQuarantineTime?: string | null;
   checkBorderGuard?: boolean | null;
@@ -171,6 +194,7 @@ export type CuaKhauSoVehicleDetail = CuaKhauSoVehicleBrief & {
   confirmTransportLicense?: boolean | null;
   confirmTransportLicenseTime?: string | null;
   confirmTransportLicenseNote?: string | null;
+  description?: string | null;
   confirmOutParkingCustoms?: boolean | null;
   confirmOutParkingCustomsTime?: string | null;
   confirmOutParkingBorderGuard?: boolean | null;
@@ -221,7 +245,25 @@ export type CuaKhauSoChangeVehicleDetail = {
   licencePlateChange?: string | null;
   driverName?: string | null;
   areaChange?: string | null;
+  price?: number | null;
+  feeRate?: number | null;
+  weight?: number | null;
+  vehicleTypeEnumText?: string | null;
+  numberOfContainerOrMooc?: string | null;
+  numberOfMooc?: string | null;
+  description?: string | null;
+  numberHQs?: string[] | null;
+  vehicleRegistrationFormId?: string | null;
   checkChangeVehicle?: boolean | null;
+  checkChangeVehicleTime?: string | null;
+  checkMedicalQuarantine?: boolean | null;
+  checkMedicalQuarantineTime?: string | null;
+  checkChangeVehicleOutGateCustomVN?: boolean | null;
+  checkChangeVehicleOutGateCustomVNTime?: string | null;
+  confirmOutOfParkinglotByCustoms?: boolean | null;
+  confirmOutOfParkinglotTimeByCustoms?: string | null;
+  emptyVehicleEnteredGateTime?: string | null;
+  emptyVehicleEnteredGateCustomsTime?: string | null;
 };
 
 export type CuaKhauSoProcedureStep = {
@@ -259,6 +301,11 @@ export type CuaKhauSoDeclarationSummary = {
 export type CuaKhauSoDeclarationDetailView = CuaKhauSoDeclarationSummary & {
   borderGuardDeclarationNumber: string;
   arrivalAt: string;
+  createdBy?: {
+    username: string;
+    displayName: string;
+    phoneNumber: string;
+  };
   feePayingCompany: {
     name: string;
     taxCode: string;
@@ -275,12 +322,26 @@ export type CuaKhauSoDeclarationDetailView = CuaKhauSoDeclarationSummary & {
   transshipment: {
     licenseRegistered: boolean;
     transportLicenseConfirmed: boolean;
+    chinaVehicleEntered: boolean;
+    vietnamVehicleEntered: boolean;
+    foreignVehicleRequired: boolean;
+    foreignVehicleEntered: boolean;
+    borderGuardLagging: boolean;
     eligible: boolean;
     signed: boolean;
     licenseNumber: string;
+    statusLabel: string;
+    unmetConditions: string[];
+    borderGuardLaggedSince?: string;
     eligibleAt?: string;
     signedAt?: string;
   };
+  checks: Array<{
+    key: string;
+    label: string;
+    done: boolean;
+    detail: string;
+  }>;
   vehicles: Array<{
     id?: string;
     plateNumber: string;
@@ -288,7 +349,55 @@ export type CuaKhauSoDeclarationDetailView = CuaKhauSoDeclarationSummary & {
     driverName: string;
     vehicleType: string;
     nationality: string;
+    containerNumber: string;
+    phoneNumber: string;
+    statusLabel: string;
+    transshipmentPlateNumber: string;
+    responsiblePlateNumber: string;
+    goodsGroup: string;
+    note: string;
+    transportLicenseNumber: string;
     weight?: number;
+    price?: number;
+    feeRate?: number;
+    borderGuardConfirmed: boolean;
+    customsArrivalConfirmed: boolean;
+    inParkingConfirmed: boolean;
+    transportLicenseConfirmed: boolean;
+    borderGuardAt?: string;
+    customsArrivalAt?: string;
+    inParkingAt?: string;
+    transportLicenseConfirmedAt?: string;
+    customsProcessingAt?: string;
+    outParkingBorderGuardAt?: string;
+    outParkingCustomsAt?: string;
+  }>;
+  transshipmentVehicles: Array<{
+    id?: string;
+    sourcePlateNumber: string;
+    plateNumber: string;
+    driverName: string;
+    vehicleType: string;
+    areaChange: string;
+    containerNumber: string;
+    trailerNumber: string;
+    customsDeclarationNumbers: string;
+    statusLabel: string;
+    note: string;
+    weight?: number;
+    price?: number;
+    feeRate?: number;
+    vehicleRegistrationFormId?: string;
+    borderGuardEntered: boolean;
+    customsEntered: boolean;
+    changeConfirmed: boolean;
+    customsOutConfirmed: boolean;
+    medicalQuarantineConfirmed: boolean;
+    borderGuardEnteredAt?: string;
+    customsEnteredAt?: string;
+    changeConfirmedAt?: string;
+    customsOutAt?: string;
+    medicalQuarantineAt?: string;
   }>;
   goods: Array<{
     id?: string;

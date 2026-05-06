@@ -3,6 +3,7 @@ import type {
   MembershipInvitationStatus,
   MembershipStatus,
   IntegrationSyncRunStatus,
+  NotificationChannel,
   OrganizationType,
   OwnershipType,
   TripDirection,
@@ -132,6 +133,12 @@ export type ApiCustomsDeclaration = {
   submittedAt?: string | null;
   approvedAt?: string | null;
   rejectedAt?: string | null;
+  sourceProvider?: string | null;
+  sourceExternalId?: string | null;
+  sourceStatus?: string | null;
+  sourceObservedAt?: string | null;
+  sourceUpdatedAt?: string | null;
+  lastIngestedAt?: string | null;
 };
 
 export type ApiTripCounts = {
@@ -177,11 +184,20 @@ export type ApiTripSummaryEvent = {
 export type ApiTripSourceSummary = {
   provider: 'CUA_KHAU_SO';
   declarationNumber?: string;
+  statusLabel?: string;
   gateName?: string;
   yardName?: string;
   vehiclePlate?: string;
   driverName?: string;
+  paymentStatus?: string;
   paymentCompleted?: boolean;
+  completed?: boolean;
+  sourceObservedAt?: string;
+  sourceUpdatedAt?: string;
+  lastIngestedAt?: string;
+  freshnessLabel?: string;
+  stale?: boolean;
+  warningCodes?: Array<'STALE' | 'PAYMENT_PENDING' | 'INSPECTION' | string>;
 };
 
 export type ApiTripSummary = {
@@ -205,6 +221,7 @@ export type ApiTripSummary = {
   vehicle?: ApiVehicle | null;
   driverProfile?: ApiDriverProfile | null;
   customsDeclaration?: ApiCustomsDeclaration | null;
+  cuaKhauSoDeclaration?: ApiCuaKhauSoTripDeclaration | null;
   borderGate?: ApiBorderGate | null;
   yard?: ApiYard | null;
   events?: ApiTripSummaryEvent[];
@@ -244,6 +261,38 @@ export type ApiTripEvent = {
   confidence?: string | number | null;
   note?: string | null;
   createdBy?: ApiUserProfile | null;
+};
+
+export type ApiNotificationStatus = 'PENDING' | 'SENT' | 'FAILED' | 'READ';
+
+export type ApiNotificationPayload = {
+  kind?: 'trip_event' | string;
+  eventId?: string;
+  eventType?: TripEventType;
+  currentStatus?: TripStatus;
+  occurredAt?: string;
+  title?: string;
+  message?: string;
+  declarationNumber?: string;
+  idempotencyKey?: string;
+  delivery?: string;
+};
+
+export type ApiNotification = {
+  id: string;
+  organizationId: string;
+  tripId?: string | null;
+  recipientUserId?: string | null;
+  channel: NotificationChannel;
+  status: ApiNotificationStatus;
+  payload?: ApiNotificationPayload | Record<string, unknown> | null;
+  sentAt?: string | null;
+  failedAt?: string | null;
+  readAt?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
+  trip?: Pick<ApiTripSummary, 'id' | 'tripCode' | 'currentStatus'> | null;
+  organization?: Pick<ApiOrganization, 'id' | 'name' | 'type'> | null;
 };
 
 export type ApiDashboardSummary = {
@@ -374,6 +423,11 @@ export type ApiCuaKhauSoEventCandidate = {
 export type ApiCuaKhauSoDeclarationDetail = ApiCuaKhauSoDeclarationSummary & {
   borderGuardDeclarationNumber: string;
   arrivalAt: string;
+  createdBy?: {
+    username: string;
+    displayName: string;
+    phoneNumber: string;
+  };
   feePayingCompany: {
     name: string;
     taxCode: string;
@@ -390,12 +444,26 @@ export type ApiCuaKhauSoDeclarationDetail = ApiCuaKhauSoDeclarationSummary & {
   transshipment: {
     licenseRegistered: boolean;
     transportLicenseConfirmed: boolean;
+    chinaVehicleEntered?: boolean;
+    vietnamVehicleEntered?: boolean;
+    foreignVehicleRequired?: boolean;
+    foreignVehicleEntered?: boolean;
+    borderGuardLagging?: boolean;
     eligible: boolean;
     signed: boolean;
     licenseNumber: string;
+    statusLabel?: string;
+    unmetConditions?: string[];
+    borderGuardLaggedSince?: string;
     eligibleAt?: string;
     signedAt?: string;
   };
+  checks?: Array<{
+    key: string;
+    label: string;
+    done: boolean;
+    detail: string;
+  }>;
   vehicles: Array<{
     id?: string;
     plateNumber: string;
@@ -403,7 +471,55 @@ export type ApiCuaKhauSoDeclarationDetail = ApiCuaKhauSoDeclarationSummary & {
     driverName: string;
     vehicleType: string;
     nationality: string;
+    containerNumber?: string;
+    phoneNumber?: string;
+    statusLabel?: string;
+    transshipmentPlateNumber?: string;
+    responsiblePlateNumber?: string;
+    goodsGroup?: string;
+    note?: string;
+    transportLicenseNumber?: string;
     weight?: number;
+    price?: number;
+    feeRate?: number;
+    borderGuardConfirmed?: boolean;
+    customsArrivalConfirmed?: boolean;
+    inParkingConfirmed?: boolean;
+    transportLicenseConfirmed?: boolean;
+    borderGuardAt?: string;
+    customsArrivalAt?: string;
+    inParkingAt?: string;
+    transportLicenseConfirmedAt?: string;
+    customsProcessingAt?: string;
+    outParkingBorderGuardAt?: string;
+    outParkingCustomsAt?: string;
+  }>;
+  transshipmentVehicles?: Array<{
+    id?: string;
+    sourcePlateNumber: string;
+    plateNumber: string;
+    driverName: string;
+    vehicleType: string;
+    areaChange: string;
+    containerNumber?: string;
+    trailerNumber?: string;
+    customsDeclarationNumbers?: string;
+    statusLabel?: string;
+    note?: string;
+    weight?: number;
+    price?: number;
+    feeRate?: number;
+    vehicleRegistrationFormId?: string;
+    borderGuardEntered: boolean;
+    customsEntered: boolean;
+    changeConfirmed: boolean;
+    customsOutConfirmed: boolean;
+    medicalQuarantineConfirmed: boolean;
+    borderGuardEnteredAt?: string;
+    customsEnteredAt?: string;
+    changeConfirmedAt?: string;
+    customsOutAt?: string;
+    medicalQuarantineAt?: string;
   }>;
   goods: Array<{
     id?: string;
@@ -422,6 +538,19 @@ export type ApiCuaKhauSoDeclarationDetail = ApiCuaKhauSoDeclarationSummary & {
   procedureSteps: ApiCuaKhauSoProcedureStep[];
   eventCandidates: ApiCuaKhauSoEventCandidate[];
 };
+
+export type ApiCuaKhauSoTripDeclaration = Partial<ApiCuaKhauSoDeclarationDetail> &
+  Partial<ApiCuaKhauSoDeclarationSummary> & {
+    id?: string;
+    externalId?: string;
+    declarationNumber?: string;
+    sourceStatus?: string | null;
+    sourceObservedAt?: string | null;
+    sourceUpdatedAt?: string | null;
+    lastIngestedAt?: string | null;
+    freshnessLabel?: string;
+    stale?: boolean;
+  };
 
 export type ApiCuaKhauSoDeclarationList = {
   declarations: ApiCuaKhauSoDeclarationSummary[];

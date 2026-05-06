@@ -1,5 +1,5 @@
-import { CuaKhauSoClient } from './cua-khau-so-client';
+import { redirect } from 'next/navigation';
 
 export default function CuaKhauSoPage() {
-  return <CuaKhauSoClient />;
+  redirect('/settings/cua-khau-so');
 }

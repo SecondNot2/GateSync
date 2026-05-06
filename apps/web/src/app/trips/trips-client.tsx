@@ -4,7 +4,7 @@ import { tripExceptionFilters, tripStatuses } from '@gatesync/shared';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { FormEvent } from 'react';
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { NoOrganizationState } from '@/components/no-organization-state';
 import { PriorityBadge, TripStatusBadge } from '@/components/status-badge';
@@ -17,7 +17,7 @@ import {
   TextInput
 } from '@/components/ui';
 import type { ListTripsParams } from '@/lib/api/types';
-import { loadTripsData } from '@/lib/operations/data';
+import { loadTripsData, runCuaKhauSoSyncNow } from '@/lib/operations/data';
 import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
 import {
   countActiveTripFilters,
@@ -82,6 +82,10 @@ export function TripsClient({
   );
   const activeFilterCount = countActiveTripFilters(filters);
   const isUpdating = isLoading || isPending;
+  const [isSyncingCks, setIsSyncingCks] = useState(false);
+  const [cksSyncMessage, setCksSyncMessage] = useState<string | undefined>();
+  const cksSyncTriggeredRef = useRef(false);
+  const canSyncCks = data?.organization.currentUser?.canSyncCuaKhauSoIntegration ?? false;
 
   useEffect(() => {
     setSearch(filters.search ?? '');
@@ -157,6 +161,46 @@ export function TripsClient({
     loadedSearchKey,
     searchKey
   ]);
+
+  async function triggerCksSync() {
+    setIsSyncingCks(true);
+    setCksSyncMessage(undefined);
+
+    try {
+      const result = await runCuaKhauSoSyncNow();
+
+      if (result.skipped) {
+        setCksSyncMessage(
+          'Worker khác đang đối chiếu Cửa khẩu số. Dữ liệu hiện tại đã là mới nhất.'
+        );
+      } else {
+        setCksSyncMessage(
+          `Đã cập nhật ${result.detailsFetched} tờ khai từ Cửa khẩu số, ${result.eventsCreated} sự kiện mới.`
+        );
+      }
+
+      const freshData = await loadTripsData(filters);
+      setData(freshData);
+      setError(undefined);
+    } catch (syncError) {
+      const msg = syncError instanceof Error ? syncError.message : '';
+
+      if (!msg.includes('vừa kiểm tra')) {
+        setCksSyncMessage(msg || 'Không thể đồng bộ từ Cửa khẩu số.');
+      }
+    } finally {
+      setIsSyncingCks(false);
+    }
+  }
+
+  useEffect(() => {
+    if (cksSyncTriggeredRef.current) return;
+    if (!canSyncCks) return;
+    if (isLoading) return;
+
+    cksSyncTriggeredRef.current = true;
+    void triggerCksSync();
+  }, [canSyncCks, isLoading]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -391,16 +435,45 @@ export function TripsClient({
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
                   Hàng chờ vận hành
                 </p>
-                <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                  {isLoading
-                    ? 'Đang tải chuyến...'
-                    : `${data?.trips.length ?? 0} chuyến cần theo dõi`}
-                </h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="mt-2 text-2xl font-bold text-slate-950">
+                    {isLoading
+                      ? 'Đang tải chuyến...'
+                      : `${data?.trips.length ?? 0} chuyến cần theo dõi`}
+                  </h2>
+                  {canSyncCks ? (
+                    <button
+                      type="button"
+                      onClick={triggerCksSync}
+                      disabled={isSyncingCks || isLoading}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-sky-300 hover:text-sky-700 disabled:opacity-50"
+                      title="Cập nhật dữ liệu từ Cửa khẩu số"
+                    >
+                      <svg
+                        className={`h-3.5 w-3.5 ${isSyncingCks ? 'animate-spin' : ''}`}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+                      </svg>
+                      {isSyncingCks ? 'Đang cập nhật...' : 'Cập nhật CKS'}
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <p className="max-w-2xl text-sm leading-6 text-slate-600">
                 Sắp xếp theo mức độ cần theo dõi để điều phối viên mở đúng chuyến trước.
               </p>
             </div>
+            {cksSyncMessage ? (
+              <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-2 text-xs font-medium text-sky-700">
+                {cksSyncMessage}
+              </div>
+            ) : null}
 
             {isLoading ? (
               <StatePanel
@@ -431,10 +504,11 @@ export function TripsClient({
 function TripsList({ data }: { data: TripsViewData }) {
   return (
     <div className="mt-5 overflow-hidden rounded-3xl border border-slate-100">
-      <div className="hidden grid-cols-[1fr_1fr_0.9fr_0.8fr_0.8fr] gap-4 bg-slate-950 px-5 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300 xl:grid">
+      <div className="hidden grid-cols-[1fr_1fr_0.9fr_1fr_0.75fr_0.85fr] gap-4 bg-slate-950 px-5 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300 xl:grid">
         <span>Chuyến</span>
         <span>Phương tiện & tài xế</span>
         <span>Cửa khẩu/bãi</span>
+        <span>Tờ khai CKS</span>
         <span>Tiến độ</span>
         <span>Ưu tiên</span>
       </div>
@@ -443,7 +517,7 @@ function TripsList({ data }: { data: TripsViewData }) {
           <Link
             key={trip.id}
             href={`/trips/${trip.id}`}
-            className="grid gap-4 px-4 py-5 transition hover:bg-sky-50/60 sm:px-5 xl:grid-cols-[1fr_1fr_0.9fr_0.8fr_0.8fr] xl:items-center"
+            className="grid gap-4 px-4 py-5 transition hover:bg-sky-50/60 sm:px-5 xl:grid-cols-[1fr_1fr_0.9fr_1fr_0.75fr_0.85fr] xl:items-center"
           >
             <div>
               <div className="flex flex-wrap items-center gap-2 xl:block">
@@ -464,6 +538,7 @@ function TripsList({ data }: { data: TripsViewData }) {
               <p className="font-medium text-slate-800">{trip.borderGate}</p>
               <p className="mt-1 text-sm text-slate-600">{trip.yard}</p>
             </div>
+            <DeclarationSignal signal={trip.declarationSignal} />
             <div className="space-y-2">
               <p className="text-xs font-semibold text-amber-700">
                 {formatDelay(trip.delayMinutes)}
@@ -493,6 +568,49 @@ function TripsList({ data }: { data: TripsViewData }) {
           </Link>
         ))}
       </div>
+    </div>
+  );
+}
+
+function DeclarationSignal({
+  signal
+}: {
+  signal: TripsViewData['trips'][number]['declarationSignal'];
+}) {
+  if (!signal) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+        Chưa có tờ khai Cửa khẩu số
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-sky-100 bg-sky-50 px-3 py-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-bold text-slate-950">{signal.number}</span>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[0.68rem] font-bold ${
+            signal.stale ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+          }`}
+        >
+          {signal.freshness}
+        </span>
+      </div>
+      <p className="mt-1 text-xs font-semibold text-slate-700">{signal.status}</p>
+      <p className="mt-1 text-xs text-slate-500">{signal.paymentStatus}</p>
+      {signal.warnings.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {signal.warnings.slice(0, 2).map((warning) => (
+            <span
+              key={warning.code}
+              className={`rounded-full px-2 py-0.5 text-[0.68rem] font-bold ring-1 ${warning.tone}`}
+            >
+              {warning.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

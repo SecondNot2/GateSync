@@ -17,6 +17,7 @@ import type {
   TripType
 } from '@prisma/client';
 import type { RequestUser } from '../../auth/request-user';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { CreateTripEventDto } from '../../trips/dto/create-trip-event.dto';
 import { TripsService } from '../../trips/trips.service';
@@ -30,6 +31,7 @@ import type {
   CuaKhauSoDeclarationDetail,
   CuaKhauSoDeclarationDetailView,
   CuaKhauSoDeclarationSummary,
+  CuaKhauSoEmptyVehicleLogItem,
   CuaKhauSoListStatus,
   CuaKhauSoPageSize
 } from './cua-khau-so.types';
@@ -125,10 +127,11 @@ const localCredentialSecret = 'gatesync-local-development-secret';
 const defaultRecentWindowDays = 7;
 const filteredListPageSize: CuaKhauSoPageSize = 100;
 const terminalTripStatuses: readonly TripStatus[] = ['COMPLETED', 'CANCELLED'];
-const defaultRefreshThrottleMs = 60_000;
-const defaultStaleAfterMs = 2 * 60_000;
+const defaultRefreshThrottleMs = 10 * 60_000;
+const defaultStaleAfterMs = 30 * 60_000;
 const defaultLeaseMs = 3 * 60_000;
 const maxBackoffMs = 30 * 60_000;
+const defaultBorderGuardLagAlertMs = 5 * 60_000;
 
 @Injectable()
 export class CuaKhauSoService {
@@ -140,6 +143,7 @@ export class CuaKhauSoService {
     @Inject(CuaKhauSoClient) private readonly client: CuaKhauSoClient,
     @Inject(CuaKhauSoMapper) private readonly mapper: CuaKhauSoMapper,
     @Inject(CuaKhauSoSessionStore) private readonly sessionStore: CuaKhauSoSessionStore,
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
     @Inject(TripsService) private readonly tripsService: TripsService
   ) {}
 
@@ -595,11 +599,20 @@ export class CuaKhauSoService {
       transshipment: {
         licenseRegistered: false,
         transportLicenseConfirmed: false,
+        chinaVehicleEntered: false,
+        vietnamVehicleEntered: false,
+        foreignVehicleRequired: false,
+        foreignVehicleEntered: false,
+        borderGuardLagging: false,
         eligible: false,
         signed: false,
-        licenseNumber: 'Chưa cập nhật'
+        licenseNumber: 'Chưa cập nhật',
+        statusLabel: 'Chưa đủ điều kiện ký sang tải',
+        unmetConditions: ['Chưa có dữ liệu chi tiết từ bản sao Cửa khẩu số.']
       },
+      checks: [],
       vehicles: [],
+      transshipmentVehicles: [],
       goods: [],
       procedureSteps: [],
       eventCandidates: []
@@ -1061,6 +1074,15 @@ export class CuaKhauSoService {
       );
     }
 
+    if (syncBase.linkedTrip) {
+      await this.createCuaKhauSoOperationalNotifications(
+        organizationId,
+        syncBase.linkedTrip.id,
+        sourceSnapshot,
+        syncedAt
+      );
+    }
+
     return {
       declaration: {
         id: syncBase.declaration.id,
@@ -1093,6 +1115,64 @@ export class CuaKhauSoService {
         currentStatusUpdatedAt: completedAt
       }
     });
+  }
+
+  private async createCuaKhauSoOperationalNotifications(
+    organizationId: string,
+    tripId: string,
+    sourceSnapshot: CuaKhauSoDeclarationDetailView,
+    syncedAt: Date
+  ) {
+    try {
+      const transshipment = sourceSnapshot.transshipment;
+      const laggedSince = this.parseDate(transshipment.borderGuardLaggedSince);
+      const borderGuardLagAlertMs =
+        this.configService.get<number>('CUA_KHAU_SO_BORDER_GUARD_LAG_ALERT_MS') ??
+        defaultBorderGuardLagAlertMs;
+      const sourceRef = sourceSnapshot.externalId || sourceSnapshot.declarationNumber;
+
+      if (
+        transshipment.borderGuardLagging &&
+        laggedSince &&
+        syncedAt.getTime() - laggedSince.getTime() >= borderGuardLagAlertMs
+      ) {
+        await this.notifications.createCuaKhauSoDocumentStaffNotifications(
+          this.prisma,
+          organizationId,
+          tripId,
+          {
+            kind: 'cua_khau_so_border_guard_lag',
+            idempotencyKey: `cua-khau-so:${organizationId}:${sourceRef}:border-guard-lag`,
+            eventType: 'INSPECTION_REQUIRED',
+            title: 'CBHQ đã tích xe vào, CBBP chưa xác nhận',
+            message: `Tờ khai ${sourceSnapshot.declarationNumber} cần nhân viên thủ tục kiểm tra với CBBP vì quá ${Math.floor(
+              borderGuardLagAlertMs / 60_000
+            )} phút chưa có xác nhận Biên phòng.`,
+            occurredAt: laggedSince,
+            declarationNumber: sourceSnapshot.declarationNumber
+          }
+        );
+      }
+
+      if (transshipment.eligible) {
+        await this.notifications.createCuaKhauSoDocumentStaffNotifications(
+          this.prisma,
+          organizationId,
+          tripId,
+          {
+            kind: 'cua_khau_so_transshipment_ready',
+            idempotencyKey: `cua-khau-so:${organizationId}:${sourceRef}:transshipment-ready`,
+            eventType: 'TRANSSHIPMENT_ELIGIBLE',
+            title: 'Đủ điều kiện ký sang tải',
+            message: `Tờ khai ${sourceSnapshot.declarationNumber} đã đủ điều kiện ký sang tải: xe không VN và xe VN nhận sang tải đã đủ mốc BP/HQ, giấy phép đã xác nhận.`,
+            occurredAt: this.parseDate(transshipment.eligibleAt) ?? syncedAt,
+            declarationNumber: sourceSnapshot.declarationNumber
+          }
+        );
+      }
+    } catch {
+      return;
+    }
   }
 
   private async fetchFilteredDeclarationList(
@@ -1173,7 +1253,138 @@ export class CuaKhauSoService {
       throw new NotFoundException('Không tìm thấy chi tiết tờ khai trên Cửa khẩu số.');
     }
 
-    return response.data;
+    return this.enrichDeclarationDetailWithEmptyVehicleLogs(session, response.data);
+  }
+
+  private async enrichDeclarationDetailWithEmptyVehicleLogs(
+    session: ReturnType<CuaKhauSoService['withSessionExpiry']>,
+    detail: CuaKhauSoDeclarationDetail
+  ): Promise<CuaKhauSoDeclarationDetail> {
+    const changeVehicleDetails = detail.changeVehicle?.changeVehicleDetails;
+
+    if (!changeVehicleDetails?.length) {
+      return detail;
+    }
+
+    const enrichedChangeVehicleDetails = await Promise.all(
+      changeVehicleDetails.map(async (changeVehicle) => {
+        if (!changeVehicle.vehicleRegistrationFormId) {
+          return changeVehicle;
+        }
+
+        try {
+          const response = await this.client.getEmptyVehicleLog(
+            session,
+            changeVehicle.vehicleRegistrationFormId
+          );
+          const times = this.resolveEmptyVehicleLogTimes(response.data ?? []);
+          const enrichedChangeVehicle = {
+            ...changeVehicle
+          };
+
+          if (times.borderGuardEnteredAt) {
+            enrichedChangeVehicle.emptyVehicleEnteredGateTime = times.borderGuardEnteredAt;
+          }
+
+          if (times.customsEnteredAt) {
+            enrichedChangeVehicle.emptyVehicleEnteredGateCustomsTime = times.customsEnteredAt;
+          }
+
+          return enrichedChangeVehicle;
+        } catch {
+          return changeVehicle;
+        }
+      })
+    );
+
+    return {
+      ...detail,
+      changeVehicle: {
+        ...detail.changeVehicle,
+        changeVehicleDetails: enrichedChangeVehicleDetails
+      }
+    };
+  }
+
+  private resolveEmptyVehicleLogTimes(logs: CuaKhauSoEmptyVehicleLogItem[]) {
+    let borderGuardEnteredAt: string | undefined;
+    let customsEnteredAt: string | undefined;
+
+    for (const log of logs) {
+      const values = [this.parseSourceLogValue(log.value), log];
+
+      for (const value of values) {
+        borderGuardEnteredAt =
+          borderGuardEnteredAt ??
+          this.findSourceString(value, [
+            'EnteredGateTime',
+            'enteredGateTime',
+            'ConfirmInGateTime',
+            'checkBorderGuardTime'
+          ]);
+        customsEnteredAt =
+          customsEnteredAt ??
+          this.findSourceString(value, [
+            'EnteredGateCustomsTime',
+            'enteredGateCustomsTime',
+            'ConfirmArrivalVehicleCustomsTime',
+            'confirmArrivalVehicleCustomsTime',
+            'confirmInGateTime'
+          ]);
+      }
+    }
+
+    return {
+      borderGuardEnteredAt,
+      customsEnteredAt
+    };
+  }
+
+  private parseSourceLogValue(value: CuaKhauSoEmptyVehicleLogItem['value']): unknown {
+    if (typeof value !== 'string') {
+      return value;
+    }
+
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private findSourceString(value: unknown, keys: string[]): string | undefined {
+    if (!value || typeof value !== 'object') {
+      return undefined;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = this.findSourceString(item, keys);
+
+        if (found) {
+          return found;
+        }
+      }
+
+      return undefined;
+    }
+
+    const record = value as Record<string, unknown>;
+    const normalizedKeys = keys.map((key) => key.toLowerCase());
+
+    for (const [key, recordValue] of Object.entries(record)) {
+      if (normalizedKeys.includes(key.toLowerCase()) && typeof recordValue === 'string') {
+        return recordValue;
+      }
+
+      const nested = this.findSourceString(recordValue, keys);
+
+      if (nested) {
+        return nested;
+      }
+    }
+
+    return undefined;
   }
 
   private getRequiredSession(user: RequestUser, organizationId: string) {
@@ -1326,12 +1537,16 @@ export class CuaKhauSoService {
             continue;
           }
 
+          const enrichedDetail = await this.enrichDeclarationDetailWithEmptyVehicleLogs(
+            sourceSession,
+            detailResponse.data
+          );
           detailsFetched += 1;
           const result = await this.syncDeclarationDetail(
             user,
             account.organizationId,
             declaration.externalId,
-            detailResponse.data,
+            enrichedDetail,
             account,
             syncRunId
           );
@@ -1729,7 +1944,7 @@ export class CuaKhauSoService {
   }
 
   private matchesAutoSyncWindow(declaration: CuaKhauSoDeclarationSummary, from: Date) {
-    return this.isWithinDateWindow(declaration, from, undefined);
+    return !declaration.completed && this.isWithinDateWindow(declaration, from, undefined);
   }
 
   private isWithinDateWindow(

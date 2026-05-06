@@ -106,11 +106,58 @@ test('listTrips applies Sprint 3 filters and search with tenant scope', async ()
   assert.equal(where.shipment.is.cargoOwnerOrganizationId, query.cargoOwnerOrganizationId);
   assert.equal(where.plannedStartAt.gte?.toISOString(), query.from);
   assert.equal(where.plannedStartAt.lte?.toISOString(), query.to);
-  assert.equal(where.OR.length, 7);
+  assert.equal(where.OR.length, 8);
   assert.deepEqual(where.OR[0], {
     tripCode: {
       contains: '29H',
       mode: 'insensitive'
+    }
+  });
+  assert.deepEqual(where.OR[7], {
+    customsDeclaration: {
+      is: {
+        OR: [
+          {
+            declarationNumber: {
+              contains: '29H',
+              mode: 'insensitive'
+            }
+          },
+          {
+            customsOfficeCode: {
+              contains: '29H',
+              mode: 'insensitive'
+            }
+          },
+          {
+            sourceStatus: {
+              contains: '29H',
+              mode: 'insensitive'
+            }
+          },
+          {
+            normalizedSummary: {
+              path: ['companyGoodsName'],
+              string_contains: '29H',
+              mode: 'insensitive'
+            }
+          },
+          {
+            normalizedSummary: {
+              path: ['plateNumber'],
+              string_contains: '29H',
+              mode: 'insensitive'
+            }
+          },
+          {
+            sourceSnapshot: {
+              path: ['goods', '0', 'declarationNumber'],
+              string_contains: '29H',
+              mode: 'insensitive'
+            }
+          }
+        ]
+      }
     }
   });
 });
@@ -340,6 +387,88 @@ test('listEvents does not expose raw payload data', async () => {
 
   assert.equal(eventFindManyArgs?.select?.id, true);
   assert.equal(eventFindManyArgs?.select?.rawPayload, undefined);
+});
+
+test('getTrip returns public Cua Khau So mirror detail without raw payload data', async () => {
+  const prisma = {
+    trip: {
+      findFirst: async () => ({
+        id: 'trip-1',
+        organizationId: 'org-1',
+        tripCode: '2026050300533',
+        tripType: 'IMPORT_WITH_GOODS',
+        direction: 'IMPORT',
+        currentStatus: 'CUSTOMS_PROCESSING',
+        currentStatusUpdatedAt: new Date('2026-05-03T13:34:00.000Z'),
+        plannedStartAt: new Date('2026-05-03T13:00:00.000Z'),
+        plannedArrivalAt: new Date('2026-05-03T15:00:00.000Z'),
+        customsDeclaration: {
+          id: 'declaration-1',
+          declarationNumber: '2026050300533',
+          declarationType: 'IMPORT',
+          status: 'SUBMITTED',
+          sourceProvider: 'CUA_KHAU_SO',
+          sourceExternalId: 'external-1',
+          sourceStatus: 'Chưa hoàn thành',
+          sourceObservedAt: new Date('2026-05-03T13:35:00.000Z'),
+          lastIngestedAt: new Date('2026-05-03T13:35:02.000Z'),
+          normalizedSummary: {
+            externalId: 'external-1',
+            declarationNumber: '2026050300533',
+            gateName: 'Hữu Nghị',
+            plateNumber: 'FF0666',
+            paymentStatus: 'Chưa thanh toán',
+            completed: false
+          },
+          sourceSnapshot: {
+            externalId: 'external-1',
+            declarationNumber: '2026050300533',
+            gateName: 'Hữu Nghị',
+            statusLabel: 'Chưa hoàn thành',
+            paymentStatus: 'Chưa thanh toán',
+            rawPayload: {
+              accessToken: 'secret-token'
+            },
+            eventCandidates: [
+              {
+                eventType: 'DECLARATION_SUBMITTED',
+                rawPayload: {
+                  source: 'CUA_KHAU_SO'
+                }
+              }
+            ]
+          }
+        },
+        events: [
+          {
+            eventType: 'DECLARATION_SUBMITTED',
+            occurredAt: new Date('2026-05-03T13:19:00.000Z'),
+            recordedAt: new Date('2026-05-03T13:20:00.000Z'),
+            rawPayload: {
+              source: 'CUA_KHAU_SO',
+              declarationNumber: '2026050300533',
+              paymentCompleted: false
+            }
+          }
+        ],
+        participants: []
+      })
+    }
+  };
+  const service = createService(prisma);
+  const trip = (await service.getTrip('org-1', 'trip-1')) as Record<string, unknown>;
+  const events = trip.events as Array<Record<string, unknown>>;
+  const declaration = trip.cuaKhauSoDeclaration as Record<string, unknown>;
+  const eventCandidates = declaration.eventCandidates as Array<Record<string, unknown>>;
+  const sourceSummary = trip.sourceSummary as Record<string, unknown>;
+
+  assert.equal(events[0]?.rawPayload, undefined);
+  assert.equal(declaration.rawPayload, undefined);
+  assert.equal(eventCandidates[0]?.rawPayload, undefined);
+  assert.equal(declaration.declarationNumber, '2026050300533');
+  assert.match(String(declaration.freshnessLabel), /^Cập nhật|^Vừa cập nhật|^Chưa/);
+  assert.equal(sourceSummary.paymentStatus, 'Chưa thanh toán');
+  assert.deepEqual(sourceSummary.warningCodes, ['STALE', 'PAYMENT_PENDING']);
 });
 
 test('createEvent returns the existing event for duplicate idempotency key in the same trip', async () => {
