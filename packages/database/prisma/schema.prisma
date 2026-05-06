@@ -422,6 +422,15 @@ model CustomsDeclaration {
   declarationType      DeclarationType
   customsOfficeCode    String?
   status               DeclarationStatus  @default(DRAFT)
+  sourceProvider       IntegrationProvider?
+  sourceExternalId     String?
+  sourceStatus         String?
+  sourceUpdatedAt      DateTime?
+  sourceObservedAt     DateTime?
+  lastIngestedAt       DateTime?
+  latestSyncRunId      String?            @db.Uuid
+  normalizedSummary    Json?
+  sourceSnapshot       Json?
   submittedAt          DateTime?
   approvedAt           DateTime?
   rejectedAt           DateTime?
@@ -431,6 +440,9 @@ model CustomsDeclaration {
 
   @@unique([organizationId, declarationNumber])
   @@index([organizationId, status])
+  @@index([organizationId, sourceProvider, sourceExternalId])
+  @@index([organizationId, sourceObservedAt])
+  @@index([organizationId, lastIngestedAt])
   @@map("customs_declarations")
 }
 
@@ -528,6 +540,16 @@ model IntegrationAccount {
   status                IntegrationStatus     @default(PENDING)
   encryptedCredentials  String?
   lastSyncAt            DateTime?
+  lastListScannedAt     DateTime?
+  lastDetailRefreshedAt DateTime?
+  lastSuccessfulSyncAt  DateTime?
+  lastErrorAt           DateTime?
+  nextRetryAt           DateTime?
+  syncLagSeconds        Int?
+  consecutiveFailures   Int                   @default(0)
+  lastErrorMessage      String?
+  syncLockOwner         String?
+  syncLockExpiresAt     DateTime?
   createdAt             DateTime              @default(now())
   deletedAt             DateTime?
   deletedById           String?               @db.Uuid
@@ -536,6 +558,8 @@ model IntegrationAccount {
 
   @@unique([organizationId, provider, displayName])
   @@index([organizationId, provider])
+  @@index([nextRetryAt])
+  @@index([syncLockExpiresAt])
   @@map("integration_accounts")
 }
 
