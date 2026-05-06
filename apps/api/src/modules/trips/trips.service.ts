@@ -20,11 +20,27 @@ type DriverProfileReference = {
   id: string;
   userId: string | null;
 };
+type TripSourceSummary = {
+  provider: 'CUA_KHAU_SO';
+  declarationNumber?: string;
+  gateName?: string;
+  yardName?: string;
+  vehiclePlate?: string;
+  driverName?: string;
+  paymentCompleted?: boolean;
+};
+type TripSourceEvent = {
+  eventType: string;
+  occurredAt: Date | string;
+  recordedAt?: Date | string | null;
+  rawPayload?: Prisma.JsonValue | null;
+};
 
 const latestTripEventsSelect = {
   eventType: true,
   occurredAt: true,
-  recordedAt: true
+  recordedAt: true,
+  rawPayload: true
 } satisfies Prisma.TripEventSelect;
 
 const tripEventPublicSelect = {
@@ -65,6 +81,7 @@ const tripSummaryInclude = {
       }
     }
   },
+  customsDeclaration: true,
   borderGate: true,
   yard: true,
   events: {
@@ -147,6 +164,9 @@ const tripDetailInclude = {
   }
 } satisfies Prisma.TripInclude;
 
+const terminalTripStatuses = ['COMPLETED', 'CANCELLED'] as const;
+const defaultTripWindowDays = 7;
+
 @Injectable()
 export class TripsService {
   constructor(
@@ -165,6 +185,17 @@ export class TripsService {
 
     if (query.status) {
       where.currentStatus = query.status;
+    } else {
+      where.currentStatus = {
+        notIn: [...terminalTripStatuses]
+      };
+      where.NOT = {
+        customsDeclaration: {
+          is: {
+            status: 'APPROVED'
+          }
+        }
+      };
     }
 
     if (query.borderGateId) {
@@ -193,12 +224,12 @@ export class TripsService {
 
     const plannedStartAt: Prisma.DateTimeNullableFilter = {};
 
-    if (query.from) {
-      plannedStartAt.gte = new Date(query.from);
-    }
+    plannedStartAt.gte = query.from ? new Date(query.from) : this.getDefaultTripWindowStart();
 
     if (query.to) {
       plannedStartAt.lte = new Date(query.to);
+    } else {
+      plannedStartAt.lte = this.getDefaultTripWindowEnd();
     }
 
     if (plannedStartAt.gte || plannedStartAt.lte) {
@@ -299,7 +330,7 @@ export class TripsService {
     const sortedTrips = this.operations.sortTripsForOperations(filteredTrips);
 
     if (!query.exception) {
-      return sortedTrips;
+      return sortedTrips.map((trip) => this.toPublicTrip(trip));
     }
 
     const cursorIndex = query.cursor
@@ -307,7 +338,111 @@ export class TripsService {
       : -1;
     const startIndex = cursorIndex >= 0 ? cursorIndex + 1 : 0;
 
-    return sortedTrips.slice(startIndex, startIndex + take);
+    return sortedTrips.slice(startIndex, startIndex + take).map((trip) => this.toPublicTrip(trip));
+  }
+
+  private getDefaultTripWindowStart() {
+    const date = new Date();
+    date.setDate(date.getDate() - defaultTripWindowDays);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+
+  private getDefaultTripWindowEnd() {
+    const date = new Date();
+    date.setHours(23, 59, 59, 999);
+    return date;
+  }
+
+  private toPublicTrip<T extends object>(trip: T) {
+    const tripWithSources = trip as T & {
+      events?: TripSourceEvent[];
+      customsDeclaration?: unknown;
+    };
+    const sourceSummary = this.resolveTripSourceSummary(tripWithSources);
+    const publicEvents = tripWithSources.events?.map(
+      ({ rawPayload: _rawPayload, ...event }) => event
+    );
+
+    return {
+      ...trip,
+      ...(publicEvents ? { events: publicEvents } : {}),
+      ...(sourceSummary ? { sourceSummary } : {})
+    };
+  }
+
+  private resolveTripSourceSummary(trip: {
+    events?: TripSourceEvent[];
+    customsDeclaration?: unknown;
+  }): TripSourceSummary | undefined {
+    const declaration = this.asRecord(trip.customsDeclaration);
+    const sourcePayload = trip.events
+      ?.map((event) => this.asRecord(event.rawPayload))
+      .find((payload) => payload?.source === 'CUA_KHAU_SO');
+
+    if (!declaration && !sourcePayload) {
+      return undefined;
+    }
+
+    const summary: TripSourceSummary = {
+      provider: 'CUA_KHAU_SO'
+    };
+    const declarationNumber =
+      this.getString(sourcePayload, 'declarationNumber') ??
+      this.getString(declaration, 'declarationNumber');
+    const gateName = this.getString(sourcePayload, 'gateName');
+    const yardName = this.getString(sourcePayload, 'yardName');
+    const vehiclePlate = this.getString(sourcePayload, 'vehiclePlate');
+    const driverName = this.getString(sourcePayload, 'driverName');
+    const paymentCompleted =
+      this.getBoolean(sourcePayload, 'paymentCompleted') ??
+      (this.getString(declaration, 'status') === 'APPROVED' ? true : undefined);
+
+    if (declarationNumber) {
+      summary.declarationNumber = declarationNumber;
+    }
+
+    if (gateName) {
+      summary.gateName = gateName;
+    }
+
+    if (yardName) {
+      summary.yardName = yardName;
+    }
+
+    if (vehiclePlate) {
+      summary.vehiclePlate = vehiclePlate;
+    }
+
+    if (driverName) {
+      summary.driverName = driverName;
+    }
+
+    if (paymentCompleted !== undefined) {
+      summary.paymentCompleted = paymentCompleted;
+    }
+
+    return summary;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+
+    return value as Record<string, unknown>;
+  }
+
+  private getString(record: Record<string, unknown> | undefined, key: string) {
+    const value = record?.[key];
+
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private getBoolean(record: Record<string, unknown> | undefined, key: string) {
+    const value = record?.[key];
+
+    return typeof value === 'boolean' ? value : undefined;
   }
 
   async getTrip(organizationId: string, tripId: string) {

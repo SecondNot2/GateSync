@@ -14,6 +14,22 @@ import type { CreateDriverDto } from './dto/create-driver.dto';
 import type { CreateDriverTripMediaDto } from './dto/create-driver-trip-media.dto';
 import type { UpdateDriverDto } from './dto/update-driver.dto';
 
+const defaultDriverTripWindowDays = 7;
+
+type DriverTripSourceSummary = {
+  provider: 'CUA_KHAU_SO';
+  declarationNumber?: string;
+  gateName?: string;
+  yardName?: string;
+  vehiclePlate?: string;
+  driverName?: string;
+  paymentCompleted?: boolean;
+};
+
+type DriverTripSourceEvent = {
+  rawPayload?: Prisma.JsonValue | null;
+};
+
 const driverInclude = {
   user: {
     select: {
@@ -208,6 +224,8 @@ export class DriversService {
   }
 
   async listAssignedTripsForDriver(user: RequestUser) {
+    const windowStart = this.getDefaultDriverTripWindowStart();
+    const windowEnd = this.getDefaultDriverTripWindowEnd();
     const driverProfiles = await this.prisma.driverProfile.findMany({
       where: {
         userId: user.id,
@@ -219,11 +237,22 @@ export class DriversService {
     });
     const driverProfileIds = driverProfiles.map((profile) => profile.id);
 
-    return this.prisma.trip.findMany({
+    const trips = await this.prisma.trip.findMany({
       where: {
         deletedAt: null,
         currentStatus: {
           notIn: ['COMPLETED', 'CANCELLED']
+        },
+        NOT: {
+          customsDeclaration: {
+            is: {
+              status: 'APPROVED'
+            }
+          }
+        },
+        plannedStartAt: {
+          gte: windowStart,
+          lte: windowEnd
         },
         OR: [
           {
@@ -273,7 +302,13 @@ export class DriversService {
               recordedAt: 'desc'
             }
           ],
-          take: 10
+          take: 10,
+          select: {
+            eventType: true,
+            occurredAt: true,
+            recordedAt: true,
+            rawPayload: true
+          }
         }
       },
       orderBy: [
@@ -289,6 +324,8 @@ export class DriversService {
       ],
       take: 1
     });
+
+    return trips.map((trip) => this.toPublicDriverTrip(trip));
   }
 
   async createDriverTripMedia(user: RequestUser, tripId: string, dto: CreateDriverTripMediaDto) {
@@ -304,6 +341,17 @@ export class DriversService {
         deletedAt: null,
         currentStatus: {
           notIn: ['COMPLETED', 'CANCELLED']
+        },
+        NOT: {
+          customsDeclaration: {
+            is: {
+              status: 'APPROVED'
+            }
+          }
+        },
+        plannedStartAt: {
+          gte: this.getDefaultDriverTripWindowStart(),
+          lte: this.getDefaultDriverTripWindowEnd()
         },
         OR: [
           {
@@ -509,6 +557,110 @@ export class DriversService {
     if (!membership) {
       throw new BadRequestException('Linked user must be an active member of this organization.');
     }
+  }
+
+  private getDefaultDriverTripWindowStart() {
+    const date = new Date();
+    date.setDate(date.getDate() - defaultDriverTripWindowDays);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+
+  private getDefaultDriverTripWindowEnd() {
+    const date = new Date();
+    date.setHours(23, 59, 59, 999);
+    return date;
+  }
+
+  private toPublicDriverTrip<T extends object>(trip: T) {
+    const tripWithSources = trip as T & {
+      events?: DriverTripSourceEvent[];
+      customsDeclaration?: unknown;
+    };
+    const sourceSummary = this.resolveDriverTripSourceSummary(tripWithSources);
+    const publicEvents = tripWithSources.events?.map(
+      ({ rawPayload: _rawPayload, ...event }) => event
+    );
+
+    return {
+      ...trip,
+      ...(publicEvents ? { events: publicEvents } : {}),
+      ...(sourceSummary ? { sourceSummary } : {})
+    };
+  }
+
+  private resolveDriverTripSourceSummary(trip: {
+    events?: DriverTripSourceEvent[];
+    customsDeclaration?: unknown;
+  }): DriverTripSourceSummary | undefined {
+    const declaration = this.asRecord(trip.customsDeclaration);
+    const sourcePayload = trip.events
+      ?.map((event) => this.asRecord(event.rawPayload))
+      .find((payload) => payload?.source === 'CUA_KHAU_SO');
+
+    if (!declaration && !sourcePayload) {
+      return undefined;
+    }
+
+    const summary: DriverTripSourceSummary = {
+      provider: 'CUA_KHAU_SO'
+    };
+    const declarationNumber =
+      this.getString(sourcePayload, 'declarationNumber') ??
+      this.getString(declaration, 'declarationNumber');
+    const gateName = this.getString(sourcePayload, 'gateName');
+    const yardName = this.getString(sourcePayload, 'yardName');
+    const vehiclePlate = this.getString(sourcePayload, 'vehiclePlate');
+    const driverName = this.getString(sourcePayload, 'driverName');
+    const paymentCompleted =
+      this.getBoolean(sourcePayload, 'paymentCompleted') ??
+      (this.getString(declaration, 'status') === 'APPROVED' ? true : undefined);
+
+    if (declarationNumber) {
+      summary.declarationNumber = declarationNumber;
+    }
+
+    if (gateName) {
+      summary.gateName = gateName;
+    }
+
+    if (yardName) {
+      summary.yardName = yardName;
+    }
+
+    if (vehiclePlate) {
+      summary.vehiclePlate = vehiclePlate;
+    }
+
+    if (driverName) {
+      summary.driverName = driverName;
+    }
+
+    if (paymentCompleted !== undefined) {
+      summary.paymentCompleted = paymentCompleted;
+    }
+
+    return summary;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+
+    return value as Record<string, unknown>;
+  }
+
+  private getString(record: Record<string, unknown> | undefined, key: string) {
+    const value = record?.[key];
+
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private getBoolean(record: Record<string, unknown> | undefined, key: string) {
+    const value = record?.[key];
+
+    return typeof value === 'boolean' ? value : undefined;
   }
 
   private toAuditSnapshot(driver: {
