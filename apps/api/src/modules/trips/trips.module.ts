@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { IntegrationSyncQueueModule } from '../integrations/integration-sync-queue.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TripOperationsService } from './trip-operations.service';
@@ -8,7 +9,7 @@ import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
 
 @Module({
-  imports: [AuthModule, NotificationsModule, PrismaModule],
+  imports: [AuthModule, IntegrationSyncQueueModule, NotificationsModule, PrismaModule],
   controllers: [TripsController],
   providers: [TripsService, TripOperationsService, TripStateTransitionService],
   exports: [TripsService]

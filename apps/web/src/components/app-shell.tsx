@@ -107,7 +107,7 @@ export function AppShell({
             </div>
           </Link>
           <div className="flex items-center gap-2">
-            <NotificationCenter userId={currentUser?.id} />
+            <NotificationCenter userId={currentUser?.id} organizationId={currentOrganization.id} />
             <SessionMenu currentUser={currentUser} compact />
           </div>
         </header>
@@ -273,7 +273,10 @@ export function AppShell({
                 </details>
               </div>
               <div className="flex flex-wrap gap-2 lg:flex-shrink-0">
-                <NotificationCenter userId={currentUser?.id} />
+                <NotificationCenter
+                  userId={currentUser?.id}
+                  organizationId={currentOrganization.id}
+                />
                 <SessionMenu currentUser={currentUser} />
                 {action}
               </div>

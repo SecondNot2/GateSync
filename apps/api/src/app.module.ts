@@ -9,6 +9,7 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { MembershipsModule } from './modules/memberships/memberships.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
+import { OperationsCacheModule } from './modules/cache/operations-cache.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { TripsModule } from './modules/trips/trips.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
@@ -27,6 +28,7 @@ import { ApiResponseInterceptor } from './common/interceptors/api-response.inter
     IntegrationsModule,
     MembershipsModule,
     NotificationsModule,
+    OperationsCacheModule,
     OrganizationsModule,
     TripsModule,
     VehiclesModule

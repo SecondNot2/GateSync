@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Prisma, TripStatus } from '@prisma/client';
+import { OperationsCacheService } from '../cache/operations-cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TripOperationsService } from '../trips/trip-operations.service';
 
@@ -54,9 +55,26 @@ const dashboardStatusGroups = [
 const latestTripEventsSelect = {
   eventType: true,
   occurredAt: true,
-  recordedAt: true,
-  rawPayload: true
+  recordedAt: true
 } satisfies Prisma.TripEventSelect;
+
+const customsDeclarationSummarySelect = {
+  id: true,
+  declarationNumber: true,
+  declarationType: true,
+  customsOfficeCode: true,
+  status: true,
+  sourceProvider: true,
+  sourceExternalId: true,
+  sourceStatus: true,
+  sourceUpdatedAt: true,
+  sourceObservedAt: true,
+  lastIngestedAt: true,
+  normalizedSummary: true,
+  submittedAt: true,
+  approvedAt: true,
+  rejectedAt: true
+} satisfies Prisma.CustomsDeclarationSelect;
 
 type TripSourceSummary = {
   provider: 'CUA_KHAU_SO';
@@ -86,7 +104,9 @@ const tripSummaryInclude = {
       }
     }
   },
-  customsDeclaration: true,
+  customsDeclaration: {
+    select: customsDeclarationSummarySelect
+  },
   borderGate: true,
   yard: true,
   events: {
@@ -113,10 +133,19 @@ const tripSummaryInclude = {
 export class DashboardService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(OperationsCacheService) private readonly cache: OperationsCacheService,
     @Inject(TripOperationsService) private readonly operations: TripOperationsService
   ) {}
 
   async getSummary(organizationId: string) {
+    return this.cache.getOrSet(
+      this.cache.makeDashboardStatsKey(organizationId),
+      this.cache.dashboardStatsTtlMs(),
+      () => this.getSummaryUncached(organizationId)
+    );
+  }
+
+  private async getSummaryUncached(organizationId: string) {
     const now = new Date();
     const startOfDay = new Date(now);
     startOfDay.setHours(0, 0, 0, 0);
@@ -280,12 +309,17 @@ export class DashboardService {
     const declarationNumber =
       this.getString(sourcePayload, 'declarationNumber') ??
       this.getString(declaration, 'declarationNumber');
-    const gateName = this.getString(sourcePayload, 'gateName');
+    const normalizedSummary = this.asRecord(declaration?.normalizedSummary);
+    const gateName =
+      this.getString(sourcePayload, 'gateName') ?? this.getString(normalizedSummary, 'gateName');
     const yardName = this.getString(sourcePayload, 'yardName');
-    const vehiclePlate = this.getString(sourcePayload, 'vehiclePlate');
+    const vehiclePlate =
+      this.getString(sourcePayload, 'vehiclePlate') ??
+      this.getString(normalizedSummary, 'plateNumber');
     const driverName = this.getString(sourcePayload, 'driverName');
     const paymentCompleted =
       this.getBoolean(sourcePayload, 'paymentCompleted') ??
+      this.getBoolean(normalizedSummary, 'completed') ??
       (this.getString(declaration, 'status') === 'APPROVED' ? true : undefined);
 
     if (declarationNumber) {

@@ -482,6 +482,8 @@ model Trip {
 
   @@unique([organizationId, tripCode])
   @@index([organizationId, currentStatus, plannedStartAt])
+  @@index([currentStatus, updatedAt(sort: Desc)])
+  @@index([currentStatus, plannedStartAt(sort: Desc), id])
   @@index([driverProfileId, currentStatus])
   @@index([vehicleId, currentStatus])
   @@map("trips")
@@ -527,6 +529,7 @@ model TripEvent {
 
   @@unique([idempotencyKey])
   @@index([tripId, occurredAt])
+  @@index([tripId, recordedAt(sort: Desc)])
   @@index([organizationId, eventType, occurredAt])
   @@index([source, sourceRef])
   @@map("trip_events")
@@ -646,7 +649,9 @@ model Notification {
   recipientUser     User?                @relation(fields: [recipientUserId], references: [id])
 
   @@index([recipientUserId, status, createdAt])
+  @@index([recipientUserId, channel, status, createdAt(sort: Desc)])
   @@index([organizationId, status])
+  @@index([organizationId, channel, createdAt(sort: Desc)])
   @@map("notifications")
 }
 

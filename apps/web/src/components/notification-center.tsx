@@ -11,15 +11,10 @@ import { tripEventTypeLabels, tripStatusLabels } from '@/lib/ui-labels';
 
 type NotificationCenterProps = {
   userId?: string | undefined;
+  organizationId?: string | undefined;
 };
 
-type RealtimeNotificationRow = {
-  id?: string;
-  recipientUserId?: string | null;
-  status?: string | null;
-};
-
-export function NotificationCenter({ userId }: NotificationCenterProps) {
+export function NotificationCenter({ userId, organizationId }: NotificationCenterProps) {
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -58,54 +53,42 @@ export function NotificationCenter({ userId }: NotificationCenterProps) {
   }, [loadNotifications]);
 
   useEffect(() => {
-    if (!userId || !webEnv.hasSupabaseConfig) {
+    if (!userId || !organizationId || !webEnv.hasSupabaseConfig) {
       return;
     }
 
     const supabase = createBrowserSupabaseClient();
-    const channel = supabase
-      .channel(`gatesync-notifications-${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `recipientUserId=eq.${userId}`
-        },
-        () => {
-          void loadNotifications();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'notifications',
-          filter: `recipientUserId=eq.${userId}`
-        },
-        (payload) => {
-          const row = payload.new as RealtimeNotificationRow;
+    const channel = supabase.channel(`org_${organizationId}_events`, {
+      config: {
+        private: true
+      }
+    });
+    let isMounted = true;
 
-          if (row.id && row.status === 'READ') {
-            setNotifications((current) =>
-              current.map((notification) =>
-                notification.id === row.id ? { ...notification, status: 'READ' } : notification
-              )
-            );
-            return;
+    void resolveWebApiSession().then((session) => {
+      if (!isMounted || session.mode === 'dev') {
+        return;
+      }
+
+      supabase.realtime.setAuth(session.accessToken);
+      channel
+        .on(
+          'broadcast',
+          {
+            event: '*'
+          },
+          () => {
+            void loadNotifications();
           }
-
-          void loadNotifications();
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
+    });
 
     return () => {
+      isMounted = false;
       void supabase.removeChannel(channel);
     };
-  }, [loadNotifications, userId]);
+  }, [loadNotifications, organizationId, userId]);
 
   async function markRead(notificationId: string) {
     setNotifications((current) =>

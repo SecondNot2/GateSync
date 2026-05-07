@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import type { ConfigService } from '@nestjs/config';
 import type { RequestUser } from '../../auth/request-user';
+import type { OperationsCacheService } from '../../cache/operations-cache.service';
 import type { NotificationsService } from '../../notifications/notifications.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { TripsService } from '../../trips/trips.service';
@@ -59,6 +60,13 @@ function createService(params: {
     (params.notificationsService ?? {
       createCuaKhauSoDocumentStaffNotifications: async () => undefined
     }) as NotificationsService,
+    {
+      makeCuaKhauSoDeclarationsKey: (_organizationId: string, filterHash: string) =>
+        `cks:${filterHash}`,
+      cksDeclarationsTtlMs: () => 90_000,
+      getOrSet: async <T>(_key: string, _ttlMs: number, factory: () => Promise<T>) => factory(),
+      invalidateCuaKhauSoReadModels: async () => undefined
+    } as unknown as OperationsCacheService,
     (params.tripsService ?? {}) as TripsService
   );
 }

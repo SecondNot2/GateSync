@@ -17,6 +17,7 @@ import type {
   TripType
 } from '@prisma/client';
 import type { RequestUser } from '../../auth/request-user';
+import { OperationsCacheService } from '../../cache/operations-cache.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { CreateTripEventDto } from '../../trips/dto/create-trip-event.dto';
@@ -144,6 +145,7 @@ export class CuaKhauSoService {
     @Inject(CuaKhauSoMapper) private readonly mapper: CuaKhauSoMapper,
     @Inject(CuaKhauSoSessionStore) private readonly sessionStore: CuaKhauSoSessionStore,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(OperationsCacheService) private readonly cache: OperationsCacheService,
     @Inject(TripsService) private readonly tripsService: TripsService
   ) {}
 
@@ -224,7 +226,14 @@ export class CuaKhauSoService {
     query: ListCuaKhauSoDeclarationsQueryDto
   ) {
     void this.refreshOnOpenIfStale(user, organizationId);
-    return this.listMirrorDeclarations(organizationId, query);
+    const cacheKey = this.cache.makeCuaKhauSoDeclarationsKey(
+      organizationId,
+      this.hashCacheKey(query)
+    );
+
+    return this.cache.getOrSet(cacheKey, this.cache.cksDeclarationsTtlMs(), () =>
+      this.listMirrorDeclarations(organizationId, query)
+    );
   }
 
   async getDeclaration(user: RequestUser, organizationId: string, externalId: string) {
@@ -353,6 +362,52 @@ export class CuaKhauSoService {
     return {
       accountsProcessed: accounts.length,
       results
+    };
+  }
+
+  async syncOrganizationFromQueue(organizationId: string, reason: string) {
+    const account = await this.prisma.integrationAccount.findFirst({
+      where: {
+        organizationId,
+        provider: 'CUA_KHAU_SO',
+        displayName: integrationDisplayName,
+        status: {
+          in: ['ACTIVE', 'ERROR']
+        },
+        deletedAt: null,
+        encryptedCredentials: {
+          not: null
+        },
+        OR: [
+          {
+            nextRetryAt: null
+          },
+          {
+            nextRetryAt: {
+              lte: new Date()
+            }
+          }
+        ]
+      },
+      select: {
+        id: true,
+        organizationId: true,
+        encryptedCredentials: true
+      }
+    });
+
+    if (!account) {
+      return {
+        skipped: true,
+        reason: 'NO_ACTIVE_CUA_KHAU_SO_ACCOUNT'
+      };
+    }
+
+    const result = await this.runAccountSync(account, 'AUTO');
+
+    return {
+      reason,
+      ...result
     };
   }
 
@@ -716,6 +771,7 @@ export class CuaKhauSoService {
         }
       });
       await this.markAccountSyncSuccess(account.id, result, finishedAt);
+      this.cache.invalidateCuaKhauSoReadModels(account.organizationId);
 
       return {
         syncRunId: syncRun.id,
@@ -915,6 +971,10 @@ export class CuaKhauSoService {
     }
 
     return `Cập nhật ${Math.floor(minutes / 60)} giờ trước`;
+  }
+
+  private hashCacheKey(value: unknown) {
+    return createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 24);
   }
 
   private async syncDeclarationDetail(

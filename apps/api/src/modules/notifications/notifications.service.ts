@@ -354,4 +354,19 @@ export class NotificationsService {
       (payload as Record<string, unknown>).idempotencyKey === idempotencyKey
     );
   }
+
+  async broadcastTripEventSignal(organizationId: string, tripId: string, eventType: string) {
+    try {
+      await this.prisma.$queryRaw`
+        SELECT realtime.send(
+          ${JSON.stringify({ tripId, eventType })}::jsonb,
+          ${eventType},
+          ${`org_${organizationId}_events`},
+          true
+        )
+      `;
+    } catch {
+      return;
+    }
+  }
 }

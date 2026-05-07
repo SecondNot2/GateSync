@@ -5,9 +5,12 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { RequestUser } from '../auth/request-user';
+import { IntegrationSyncQueueService } from '../integrations/integration-sync-queue.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { OperationsCacheService } from '../cache/operations-cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateTripEventDto } from './dto/create-trip-event.dto';
 import type { CreateTripDto } from './dto/create-trip.dto';
@@ -48,9 +51,36 @@ type TripSourceEvent = {
 const latestTripEventsSelect = {
   eventType: true,
   occurredAt: true,
-  recordedAt: true,
+  recordedAt: true
+} satisfies Prisma.TripEventSelect;
+
+const latestTripDetailEventsSelect = {
+  ...latestTripEventsSelect,
   rawPayload: true
 } satisfies Prisma.TripEventSelect;
+
+const customsDeclarationSummarySelect = {
+  id: true,
+  declarationNumber: true,
+  declarationType: true,
+  customsOfficeCode: true,
+  status: true,
+  sourceProvider: true,
+  sourceExternalId: true,
+  sourceStatus: true,
+  sourceUpdatedAt: true,
+  sourceObservedAt: true,
+  lastIngestedAt: true,
+  normalizedSummary: true,
+  submittedAt: true,
+  approvedAt: true,
+  rejectedAt: true
+} satisfies Prisma.CustomsDeclarationSelect;
+
+const customsDeclarationDetailSelect = {
+  ...customsDeclarationSummarySelect,
+  sourceSnapshot: true
+} satisfies Prisma.CustomsDeclarationSelect;
 
 const tripEventPublicSelect = {
   id: true,
@@ -90,7 +120,9 @@ const tripSummaryInclude = {
       }
     }
   },
-  customsDeclaration: true,
+  customsDeclaration: {
+    select: customsDeclarationSummarySelect
+  },
   borderGate: true,
   yard: true,
   events: {
@@ -128,7 +160,9 @@ const tripDetailInclude = {
     }
   },
   shipment: true,
-  customsDeclaration: true,
+  customsDeclaration: {
+    select: customsDeclarationDetailSelect
+  },
   borderGate: true,
   yard: true,
   events: {
@@ -141,7 +175,7 @@ const tripDetailInclude = {
       }
     ],
     take: 3,
-    select: latestTripEventsSelect
+    select: latestTripDetailEventsSelect
   },
   participants: {
     orderBy: {
@@ -181,11 +215,21 @@ export class TripsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(IntegrationSyncQueueService) private readonly syncQueue: IntegrationSyncQueueService,
+    @Inject(OperationsCacheService) private readonly cache: OperationsCacheService,
     @Inject(TripOperationsService) private readonly operations: TripOperationsService,
     @Inject(TripStateTransitionService) private readonly transitions: TripStateTransitionService
   ) {}
 
   async listTrips(organizationId: string, query: ListTripsQueryDto) {
+    const cacheKey = this.cache.makeTripListKey(organizationId, this.hashCacheKey(query));
+
+    return this.cache.getOrSet(cacheKey, this.cache.tripListTtlMs(), () =>
+      this.listTripsUncached(organizationId, query)
+    );
+  }
+
+  private async listTripsUncached(organizationId: string, query: ListTripsQueryDto) {
     const take = query.limit ?? 50;
     const where: Prisma.TripWhereInput = {
       organizationId,
@@ -399,6 +443,10 @@ export class TripsService {
     const date = new Date();
     date.setHours(23, 59, 59, 999);
     return date;
+  }
+
+  private hashCacheKey(value: unknown) {
+    return createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 24);
   }
 
   private toPublicTrip<T extends object>(trip: T) {
@@ -756,7 +804,7 @@ export class TripsService {
     const occurredAt = new Date();
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const trip = await this.prisma.$transaction(async (tx) => {
         const driverProfile = await this.assertTripReferences(tx, organizationId, dto);
         const trip = await tx.trip.create({
           data: this.toTripCreateData(user, organizationId, dto, occurredAt)
@@ -818,6 +866,10 @@ export class TripsService {
           include: tripDetailInclude
         });
       });
+
+      this.cache.invalidateTripReadModels(organizationId);
+
+      return trip;
     } catch (error) {
       if (this.isUniqueConstraintError(error, 'tripCode')) {
         throw new ConflictException('Trip code already exists in this organization.');
@@ -897,7 +949,7 @@ export class TripsService {
     }
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const event = await this.prisma.$transaction(async (tx) => {
         const trip = await this.assertTripExists(tx, organizationId, tripId);
         const nextStatus = this.transitions.assertCanApplyEvent(trip.currentStatus, dto.eventType);
         const eventData = this.toTripEventCreateData(
@@ -948,6 +1000,12 @@ export class TripsService {
 
         return event;
       });
+
+      this.cache.invalidateTripReadModels(organizationId);
+      void this.notifications.broadcastTripEventSignal(organizationId, tripId, event.eventType);
+      this.enqueueCuaKhauSoSyncForEvent(organizationId, event.eventType);
+
+      return event;
     } catch (error) {
       if (idempotencyKey && this.isUniqueConstraintError(error, 'idempotencyKey')) {
         const existingEvent = await this.prisma.tripEvent.findUnique({
@@ -1212,6 +1270,22 @@ export class TripsService {
       event,
       currentStatus
     );
+  }
+
+  private enqueueCuaKhauSoSyncForEvent(organizationId: string, eventType: string) {
+    const syncTriggerEvents = [
+      'YARD_ENTRY_CONFIRMED',
+      'TRANSSHIPMENT_STARTED',
+      'TRANSSHIPMENT_COMPLETED',
+      'RELEASE_READY',
+      'VEHICLE_RELEASED'
+    ];
+
+    if (!syncTriggerEvents.includes(eventType)) {
+      return;
+    }
+
+    this.syncQueue.enqueueCuaKhauSoOrganization(organizationId, `trip_event:${eventType}`);
   }
 
   private normalizeIdempotencyKey(value: string | undefined): string | undefined {

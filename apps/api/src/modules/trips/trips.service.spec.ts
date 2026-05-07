@@ -3,6 +3,8 @@ import test from 'node:test';
 import { NotFoundException } from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RequestUser } from '../auth/request-user';
+import type { OperationsCacheService } from '../cache/operations-cache.service';
+import type { IntegrationSyncQueueService } from '../integrations/integration-sync-queue.service';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { CreateTripEventDto } from './dto/create-trip-event.dto';
 import type { CreateTripDto } from './dto/create-trip.dto';
@@ -29,11 +31,26 @@ function createService(
   prisma: unknown,
   notifications?: Partial<NotificationsService>
 ): TripsService {
+  const notificationService = {
+    createTripEventNotifications: async () => undefined,
+    broadcastTripEventSignal: async () => undefined,
+    ...notifications
+  } satisfies Partial<NotificationsService>;
+  const syncQueue = {
+    enqueueCuaKhauSoOrganization: () => undefined
+  } satisfies Partial<IntegrationSyncQueueService>;
+  const cache = {
+    makeTripListKey: (_organizationId: string, filterHash: string) => `trip-list:${filterHash}`,
+    tripListTtlMs: () => 30_000,
+    getOrSet: async <T>(_key: string, _ttlMs: number, factory: () => Promise<T>) => factory(),
+    invalidateTripReadModels: async () => undefined
+  } satisfies Partial<OperationsCacheService>;
+
   return new TripsService(
     prisma as PrismaService,
-    (notifications ?? {
-      createTripEventNotifications: async () => undefined
-    }) as NotificationsService,
+    notificationService as NotificationsService,
+    syncQueue as unknown as IntegrationSyncQueueService,
+    cache as unknown as OperationsCacheService,
     new TripOperationsService(),
     new TripStateTransitionService()
   );
