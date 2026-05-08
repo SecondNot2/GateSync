@@ -122,6 +122,11 @@ export type OperationsTripSummary = {
   availableManualActions: TripEventType[];
   eventCount: number;
   declarationSignal?: OperationsTripDeclarationSignal;
+  companies: string[];
+  trailerNumber?: string;
+  transshipmentPlateNumber?: string;
+  procedureStepStatus?: string;
+  customsDeclarationsCount: number;
 };
 
 export type OperationsTripDeclarationSignal = {
@@ -693,6 +698,14 @@ export function toTripSummaryView(trip: ApiTripSummary): OperationsTripSummary {
   const priority = operationalState?.priority ?? getTripPriority(trip, delayMinutes);
   const declarationSignal = toTripDeclarationSignal(trip);
 
+  const isPlaceholder = (val?: string) =>
+    !val ||
+    val === 'Chưa cập nhật' ||
+    val === 'Không có dữ liệu' ||
+    val === 'Chưa gán xe' ||
+    val === 'Không sang tải' ||
+    val === 'Chưa có thông tin';
+
   const summary: OperationsTripSummary = {
     id: trip.id,
     tripCode: trip.tripCode,
@@ -722,8 +735,100 @@ export function toTripSummaryView(trip: ApiTripSummary): OperationsTripSummary {
     nextActionLabel: operationalState?.nextAction.label ?? 'Việc cần làm tiếp theo',
     exceptionCodes: operationalState?.exceptionCodes ?? [],
     availableManualActions: operationalState?.availableManualActions ?? [],
-    eventCount: trip._count?.events ?? 0
+    eventCount: trip._count?.events ?? 0,
+    companies: [],
+    customsDeclarationsCount: 0
   };
+
+  const declaration = trip.cuaKhauSoDeclaration;
+
+  if (declaration) {
+    if (declaration.goods && Array.isArray(declaration.goods)) {
+      summary.companies = Array.from(
+        new Set(declaration.goods.map((g) => g.companyName).filter(Boolean))
+      );
+      summary.customsDeclarationsCount = new Set(
+        declaration.goods.map((g) => g.declarationNumber).filter(Boolean)
+      ).size;
+    } else if (declaration.companyGoodsName) {
+      summary.companies = [declaration.companyGoodsName];
+    }
+
+    if (declaration.trailerNumber && !isPlaceholder(declaration.trailerNumber)) {
+      summary.trailerNumber = declaration.trailerNumber;
+    }
+
+    if (
+      declaration.vehicles &&
+      Array.isArray(declaration.vehicles) &&
+      declaration.vehicles.length > 0
+    ) {
+      const v = declaration.vehicles[0];
+      if (v?.trailerNumber && !isPlaceholder(v.trailerNumber)) {
+        summary.trailerNumber = v.trailerNumber;
+      } else if (!summary.trailerNumber && v?.trailerNumber) {
+        summary.trailerNumber = v.trailerNumber;
+      }
+
+      if (
+        v?.plateNumber &&
+        !isPlaceholder(v.plateNumber) &&
+        (isPlaceholder(summary.vehicle.plateNumber) ||
+          summary.vehicle.plateNumber === 'Chưa gán xe')
+      ) {
+        summary.vehicle.plateNumber = v.plateNumber as string;
+      }
+      if (
+        v?.driverName &&
+        !isPlaceholder(v.driverName) &&
+        (isPlaceholder(summary.driver.name) || summary.driver.name === 'Chưa gán tài xế')
+      ) {
+        summary.driver.name = v.driverName as string;
+      }
+    } else {
+      if (
+        declaration.plateNumber &&
+        !isPlaceholder(declaration.plateNumber) &&
+        (isPlaceholder(summary.vehicle.plateNumber) ||
+          summary.vehicle.plateNumber === 'Chưa gán xe')
+      ) {
+        summary.vehicle.plateNumber = declaration.plateNumber;
+      }
+    }
+
+    if (
+      declaration.transshipmentVehicles &&
+      Array.isArray(declaration.transshipmentVehicles) &&
+      declaration.transshipmentVehicles.length > 0
+    ) {
+      const transshipment = declaration.transshipmentVehicles[0]?.plateNumber;
+      if (transshipment !== undefined) summary.transshipmentPlateNumber = transshipment;
+    } else if (declaration.changePlateNumber) {
+      summary.transshipmentPlateNumber = declaration.changePlateNumber;
+    }
+
+    if (declaration.procedureSteps && Array.isArray(declaration.procedureSteps)) {
+      const currentStep = declaration.procedureSteps
+        .slice()
+        .reverse()
+        .find((s) => s.done);
+      if (currentStep) {
+        summary.procedureStepStatus = currentStep.label;
+      }
+    }
+  }
+
+  if (isPlaceholder(summary.vehicle.plateNumber) || summary.vehicle.plateNumber === 'Chưa gán xe') {
+    if (trip.sourceSummary?.vehiclePlate && !isPlaceholder(trip.sourceSummary.vehiclePlate)) {
+      summary.vehicle.plateNumber = trip.sourceSummary.vehiclePlate;
+    }
+  }
+
+  if (isPlaceholder(summary.driver.name) || summary.driver.name === 'Chưa gán tài xế') {
+    if (trip.sourceSummary?.driverName && !isPlaceholder(trip.sourceSummary.driverName)) {
+      summary.driver.name = trip.sourceSummary.driverName;
+    }
+  }
 
   const borderGateId = trip.borderGateId ?? trip.borderGate?.id;
   const yardId = trip.yardId ?? trip.yard?.id;
@@ -986,10 +1091,6 @@ function toCuaKhauSoGeneralInfo(declaration: ApiCuaKhauSoTripDeclaration) {
     {
       label: 'Ngày đăng ký',
       value: formatApiDateTime(declaration.createdAt)
-    },
-    {
-      label: 'Số tờ khai biên phòng',
-      value: declaration.borderGuardDeclarationNumber ?? 'Chưa cập nhật'
     }
   ];
 }

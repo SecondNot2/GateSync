@@ -72,6 +72,7 @@ const customsDeclarationSummarySelect = {
   sourceObservedAt: true,
   lastIngestedAt: true,
   normalizedSummary: true,
+  sourceSnapshot: true,
   submittedAt: true,
   approvedAt: true,
   rejectedAt: true

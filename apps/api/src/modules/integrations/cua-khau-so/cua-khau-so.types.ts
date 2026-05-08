@@ -161,6 +161,7 @@ export type CuaKhauSoVehicleBrief = {
 
 export type CuaKhauSoVehicleDetail = CuaKhauSoVehicleBrief & {
   id?: string;
+  numberOfTrailer?: string | null;
   driverName?: string | null;
   driverPhone?: string | null;
   vehicleType?: {

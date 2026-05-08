@@ -491,7 +491,7 @@ export class CuaKhauSoMapper {
       .filter((value): value is string => Boolean(value));
     const mapped: CuaKhauSoDeclarationDetailView['vehicles'][number] = {
       plateNumber: this.nonEmpty(vehicle.licencePlate, 'Chưa cập nhật'),
-      trailerNumber: this.nonEmpty(vehicle.numberOfMooc, 'Chưa cập nhật'),
+      trailerNumber: this.nonEmpty(vehicle.numberOfTrailer, vehicle.numberOfMooc, 'Chưa cập nhật'),
       driverName: this.nonEmpty(vehicle.driverName, 'Chưa cập nhật'),
       vehicleType: this.nonEmpty(
         vehicle.vehicleType?.name,

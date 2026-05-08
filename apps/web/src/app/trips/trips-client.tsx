@@ -622,7 +622,7 @@ function TripsList({
       <div className="hidden grid-cols-[1fr_1fr_0.9fr_1fr_0.75fr_0.85fr] gap-4 bg-slate-950 px-5 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300 xl:grid">
         <span>Chuyến</span>
         <span>Phương tiện & tài xế</span>
-        <span>Cửa khẩu/bãi</span>
+        <span>Doanh nghiệp hàng hóa</span>
         <span>Tờ khai CKS</span>
         <span>Tiến độ</span>
         <span>Ưu tiên</span>
@@ -641,44 +641,72 @@ function TripsList({
                   <TripStatusBadge status={trip.currentStatus} />
                 </div>
               </div>
-              <p className="mt-1 text-sm text-slate-600">{tripTypeLabels[trip.tripType]}</p>
-              <p className="mt-1 text-xs text-slate-500">{tripDirectionLabels[trip.direction]}</p>
+              <p className="mt-1 text-sm text-slate-600">
+                {tripTypeLabels[trip.tripType]?.replace(' có hàng', '')}
+              </p>
+              <p className="mt-1 text-xs font-medium text-sky-700">{trip.borderGate}</p>
             </div>
             <div>
-              <p className="font-medium text-slate-800">{trip.vehicle.plateNumber}</p>
-              <p className="mt-1 text-sm text-slate-600">{trip.driver.name}</p>
-              <p className="mt-1 text-xs text-slate-500">{trip.driver.phone}</p>
+              <p className="font-medium text-slate-800" title="Biển số xe">
+                {trip.vehicle.plateNumber}
+              </p>
+              {trip.trailerNumber ? (
+                <p className="mt-1 text-xs text-slate-600" title="Số mooc">
+                  Mooc: {trip.trailerNumber}
+                </p>
+              ) : null}
+              {trip.transshipmentPlateNumber ? (
+                <p className="mt-1 text-xs text-amber-700" title="Biển xe sang tải">
+                  Sang tải: {trip.transshipmentPlateNumber}
+                </p>
+              ) : null}
+              <div className="mt-2">
+                <p className="text-sm text-slate-600">{trip.driver.name}</p>
+                <p className="text-xs text-slate-500">{trip.driver.phone}</p>
+              </div>
             </div>
             <div>
-              <p className="font-medium text-slate-800">{trip.borderGate}</p>
-              <p className="mt-1 text-sm text-slate-600">{trip.yard}</p>
+              {trip.companies.length > 0 ? (
+                <div className="space-y-1">
+                  {trip.companies.map((company, idx) => (
+                    <p
+                      key={idx}
+                      className="text-sm font-medium text-slate-800 line-clamp-2"
+                      title={company}
+                    >
+                      {company}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">Chưa có thông tin</p>
+              )}
+              {trip.customsDeclarationsCount > 1 ? (
+                <p className="mt-1 text-xs font-semibold text-sky-700">
+                  Gộp {trip.customsDeclarationsCount} tờ khai HQ
+                </p>
+              ) : null}
             </div>
             <DeclarationSignal signal={trip.declarationSignal} />
             <div className="space-y-2">
+              {trip.procedureStepStatus ? (
+                <p className="mb-2 inline-block rounded-lg border border-sky-100 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700">
+                  Bước: {trip.procedureStepStatus}
+                </p>
+              ) : null}
               <p className="text-xs font-semibold text-amber-700">
                 {formatDelay(trip.delayMinutes)}
               </p>
               <p className="text-xs text-slate-500">Cập nhật trạng thái: {trip.statusUpdatedAt}</p>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-2">
               <PriorityBadge priority={trip.priority} />
               <div>
                 <p className="text-xs font-semibold text-slate-700">{trip.nextActionLabel}</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">{trip.nextAction}</p>
+                <p className="mt-1 text-xs leading-4 text-slate-500 line-clamp-2">
+                  {trip.nextAction}
+                </p>
               </div>
-              {trip.availableManualActions.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {trip.availableManualActions.slice(0, 2).map((action) => (
-                    <span
-                      key={action}
-                      className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700"
-                    >
-                      {tripEventTypeLabels[action]}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              <span className="inline-flex text-sm font-semibold text-sky-700">Xem chi tiết</span>
             </div>
           </Link>
         ))}

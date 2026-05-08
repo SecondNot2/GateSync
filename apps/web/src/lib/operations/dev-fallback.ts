@@ -543,12 +543,56 @@ function toDevTripSummary(trip: (typeof demoTrips)[number]): OperationsTripSumma
     nextActionLabel: 'Việc cần làm tiếp theo',
     exceptionCodes: getDevExceptionCodes(trip.currentStatus, trip.delayMinutes),
     availableManualActions: getDevManualActions(trip.currentStatus),
-    eventCount: trip.events.length
+    eventCount: trip.events.length,
+    companies: [],
+    customsDeclarationsCount: 0
   };
   const declarationSignal = toDevTripDeclarationSignal(trip.id);
+  const declaration = toDevCuaKhauSoDeclaration(trip.id);
 
   if (declarationSignal) {
     summary.declarationSignal = declarationSignal;
+  }
+
+  if (declaration) {
+    if (declaration.goods && Array.isArray(declaration.goods)) {
+      summary.companies = Array.from(new Set(declaration.goods.map((g) => g.companyName).filter(Boolean)));
+      summary.customsDeclarationsCount = new Set(declaration.goods.map((g) => g.declarationNumber).filter(Boolean)).size;
+    } else if (declaration.summary.goodsName) {
+      summary.companies = [declaration.summary.goodsName];
+    }
+
+    if (declaration.vehicles && Array.isArray(declaration.vehicles) && declaration.vehicles.length > 0) {
+      const v = declaration.vehicles[0];
+      if (v?.trailerNumber !== undefined) summary.trailerNumber = v.trailerNumber;
+      if (v?.plateNumber && (summary.vehicle.plateNumber === 'Chưa gán xe' || summary.vehicle.plateNumber === 'Chưa cập nhật' || summary.vehicle.plateNumber === 'Không có dữ liệu')) {
+        summary.vehicle.plateNumber = v.plateNumber as string;
+      }
+      if (v?.driverName && (summary.driver.name === 'Chưa gán tài xế' || summary.driver.name === 'Chưa cập nhật' || summary.driver.name === 'Không có dữ liệu')) {
+        summary.driver.name = v.driverName as string;
+      }
+    } else {
+      if (declaration.summary.trailerNumber !== undefined) {
+        summary.trailerNumber = declaration.summary.trailerNumber;
+      }
+      if (declaration.summary.plateNumber && (summary.vehicle.plateNumber === 'Chưa gán xe' || summary.vehicle.plateNumber === 'Chưa cập nhật' || summary.vehicle.plateNumber === 'Không có dữ liệu')) {
+        summary.vehicle.plateNumber = declaration.summary.plateNumber;
+      }
+    }
+
+    if (declaration.transshipmentVehicles && Array.isArray(declaration.transshipmentVehicles) && declaration.transshipmentVehicles.length > 0) {
+      const transshipment = declaration.transshipmentVehicles[0]?.plateNumber;
+      if (transshipment !== undefined) summary.transshipmentPlateNumber = transshipment;
+    } else if (declaration.summary.changePlateNumber) {
+      summary.transshipmentPlateNumber = declaration.summary.changePlateNumber;
+    }
+
+    if (declaration.procedureSteps && Array.isArray(declaration.procedureSteps)) {
+      const currentStep = declaration.procedureSteps.slice().reverse().find((s) => s.done);
+      if (currentStep) {
+        summary.procedureStepStatus = currentStep.label;
+      }
+    }
   }
 
   return summary;

@@ -616,12 +616,12 @@ function DeclarationList({
 }) {
   return (
     <div className="divide-y divide-slate-100 overflow-hidden rounded-3xl border border-slate-100 bg-white">
-      {declarations.map((declaration) => {
+      {declarations.map((declaration, index) => {
         const isSelected = declaration.externalId === selectedExternalId;
 
         return (
           <button
-            key={declaration.externalId}
+            key={`${declaration.externalId}-${index}`}
             type="button"
             onClick={() => onSelect(declaration)}
             className={`grid w-full gap-4 px-5 py-5 text-left transition xl:grid-cols-[1fr_0.7fr_0.8fr_auto] xl:items-center ${
