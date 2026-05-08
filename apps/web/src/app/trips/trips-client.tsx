@@ -90,10 +90,15 @@ export function TripsClient({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const allTrips = useMemo(
-    () => [...(data?.trips ?? []), ...additionalTrips],
-    [data?.trips, additionalTrips]
-  );
+  const allTrips = useMemo(() => {
+    const combined = [...(data?.trips ?? []), ...additionalTrips];
+    const seen = new Set<string>();
+    return combined.filter((trip) => {
+      if (seen.has(trip.id)) return false;
+      seen.add(trip.id);
+      return true;
+    });
+  }, [data?.trips, additionalTrips]);
 
   const applySearchDebounced = useCallback(() => {
     const trimmed = search.trim();
@@ -206,9 +211,13 @@ export function TripsClient({
       const result = await runCuaKhauSoSyncNow();
 
       if (result.skipped) {
-        setCksSyncMessage(
-          'Worker khác đang đối chiếu Cửa khẩu số. Dữ liệu hiện tại đã là mới nhất.'
-        );
+        if (result.reason === 'THROTTLED') {
+          setCksSyncMessage('GateSync vừa kiểm tra nguồn Cửa khẩu số, vui lòng chờ một chút trước khi thử lại.');
+        } else {
+          setCksSyncMessage(
+            'Worker khác đang đối chiếu Cửa khẩu số. Dữ liệu hiện tại đã là mới nhất.'
+          );
+        }
       } else {
         setCksSyncMessage(
           `Đã cập nhật ${result.detailsFetched} tờ khai từ Cửa khẩu số, ${result.eventsCreated} sự kiện mới.`
@@ -217,6 +226,8 @@ export function TripsClient({
 
       const freshData = await loadTripsData(filters);
       setData(freshData);
+      setAdditionalTrips([]);
+      setHasMore(true);
       setError(undefined);
     } catch (syncError) {
       const msg = syncError instanceof Error ? syncError.message : '';
@@ -238,6 +249,7 @@ export function TripsClient({
     void triggerCksSync();
   }, [canSyncCks, isLoading]);
 
+
   const loadMore = useCallback(async () => {
     if (isLoadingMore || !hasMore) {
       return;
@@ -246,21 +258,25 @@ export function TripsClient({
     const lastTrip = allTrips[allTrips.length - 1];
 
     if (!lastTrip) {
+      setHasMore(false);
       return;
     }
 
     setIsLoadingMore(true);
 
     try {
-      const result = await loadTripsData({ ...filters, cursor: lastTrip.id, limit: 50 });
+      const pageSize = 50;
+      const result = await loadTripsData({ ...filters, cursor: lastTrip.id, limit: pageSize });
 
-      if (result.trips.length === 0) {
+      if (result.trips.length === 0 || result.trips.length < pageSize) {
         setHasMore(false);
-      } else {
+      }
+
+      if (result.trips.length > 0) {
         setAdditionalTrips((current) => [...current, ...result.trips]);
       }
     } catch {
-      // Silent fail — user can retry by scrolling
+      setHasMore(false);
     } finally {
       setIsLoadingMore(false);
     }
@@ -269,7 +285,7 @@ export function TripsClient({
   useEffect(() => {
     const sentinel = sentinelRef.current;
 
-    if (!sentinel || !hasMore) {
+    if (!sentinel || !hasMore || isLoadingMore) {
       return;
     }
 
@@ -279,7 +295,7 @@ export function TripsClient({
           void loadMore();
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1, rootMargin: '100px' }
     );
 
     observer.observe(sentinel);
@@ -287,7 +303,7 @@ export function TripsClient({
     return () => {
       observer.disconnect();
     };
-  }, [hasMore, loadMore]);
+  }, [hasMore, isLoadingMore, loadMore]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

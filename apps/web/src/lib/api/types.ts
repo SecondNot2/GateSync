@@ -600,6 +600,7 @@ export type ApiIntegrationSyncRun = {
 export type ApiCuaKhauSoSyncRunResult = {
   syncRunId?: string;
   skipped?: boolean;
+  reason?: string;
   recordsFetched: number;
   detailsFetched: number;
   eventsCreated: number;

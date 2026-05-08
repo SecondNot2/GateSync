@@ -128,7 +128,7 @@ const localCredentialSecret = 'gatesync-local-development-secret';
 const defaultRecentWindowDays = 7;
 const filteredListPageSize: CuaKhauSoPageSize = 100;
 const terminalTripStatuses: readonly TripStatus[] = ['COMPLETED', 'CANCELLED'];
-const defaultRefreshThrottleMs = 10 * 60_000;
+const defaultRefreshThrottleMs = 60_000;
 const defaultStaleAfterMs = 30 * 60_000;
 const defaultLeaseMs = 3 * 60_000;
 const maxBackoffMs = 30 * 60_000;
@@ -280,13 +280,21 @@ export class CuaKhauSoService {
 
   async runSyncNow(user: RequestUser, organizationId: string) {
     const account = await this.getConnectedAccount(organizationId);
-    const throttleMs =
-      this.configService.get<number>('CUA_KHAU_SO_REFRESH_THROTTLE_MS') ?? defaultRefreshThrottleMs;
+    const throttleMs = Number(
+      this.configService.get<number>('CUA_KHAU_SO_REFRESH_THROTTLE_MS') ?? defaultRefreshThrottleMs
+    );
 
     if (await this.hasRecentSyncRun(account.id, throttleMs)) {
-      throw new BadRequestException(
-        'GateSync vừa kiểm tra nguồn Cửa khẩu số, vui lòng thử lại sau.'
-      );
+      return {
+        skipped: true,
+        recordsFetched: 0,
+        detailsFetched: 0,
+        eventsCreated: 0,
+        eventsSkipped: 0,
+        failedDeclarations: 0,
+        syncedDeclarations: [],
+        reason: 'THROTTLED'
+      };
     }
 
     return this.runAccountSync(account, 'MANUAL', user);
@@ -706,11 +714,13 @@ export class CuaKhauSoService {
   private async refreshOnOpenIfStale(user: RequestUser, organizationId: string) {
     try {
       const account = await this.getConnectedAccount(organizationId);
-      const staleAfterMs =
-        this.configService.get<number>('CUA_KHAU_SO_STALE_AFTER_MS') ?? defaultStaleAfterMs;
-      const throttleMs =
+      const staleAfterMs = Number(
+        this.configService.get<number>('CUA_KHAU_SO_STALE_AFTER_MS') ?? defaultStaleAfterMs
+      );
+      const throttleMs = Number(
         this.configService.get<number>('CUA_KHAU_SO_REFRESH_THROTTLE_MS') ??
-        defaultRefreshThrottleMs;
+          defaultRefreshThrottleMs
+      );
       const lastSuccessfulSyncAt = account.lastSuccessfulSyncAt ?? account.lastSyncAt;
       const isStale =
         !lastSuccessfulSyncAt || Date.now() - lastSuccessfulSyncAt.getTime() > staleAfterMs;
@@ -1177,6 +1187,74 @@ export class CuaKhauSoService {
     });
   }
 
+  private async markDeclarationRemovedFromSource(
+    organizationId: string,
+    declarationId: string,
+    declarationNumber: string
+  ) {
+    const cancelledAt = new Date();
+
+    await this.prisma.customsDeclaration.update({
+      where: { id: declarationId },
+      data: {
+        status: 'CANCELLED',
+        sourceStatus: 'Đã xóa trên Cửa khẩu số',
+        sourceObservedAt: cancelledAt,
+        normalizedSummary: {
+          removedFromSource: true,
+          removedAt: cancelledAt.toISOString(),
+          statusLabel: 'Đã xóa trên Cửa khẩu số'
+        }
+      }
+    });
+
+    const linkedTrips = await this.prisma.trip.findMany({
+      where: {
+        organizationId,
+        customsDeclarationId: declarationId,
+        deletedAt: null,
+        currentStatus: {
+          notIn: [...terminalTripStatuses]
+        }
+      },
+      select: { id: true }
+    });
+
+    if (linkedTrips.length > 0) {
+      await this.prisma.trip.updateMany({
+        where: {
+          id: { in: linkedTrips.map((t) => t.id) },
+          organizationId,
+          deletedAt: null,
+          currentStatus: {
+            notIn: [...terminalTripStatuses]
+          }
+        },
+        data: {
+          currentStatus: 'CANCELLED',
+          currentStatusUpdatedAt: cancelledAt
+        }
+      });
+
+      await this.prisma.auditLog.create({
+        data: {
+          organizationId,
+          actorUserId: null,
+          action: 'integration.cua_khau_so.declaration_removed',
+          entityType: 'CustomsDeclaration',
+          entityId: declarationId,
+          after: {
+            declarationNumber,
+            cancelledTrips: linkedTrips.map((t) => t.id),
+            reason: 'Tờ khai không còn tồn tại trên Cửa khẩu số.'
+          }
+        }
+      });
+    }
+
+    this.cache.invalidateCuaKhauSoReadModels(organizationId);
+  }
+
   private async createCuaKhauSoOperationalNotifications(
     organizationId: string,
     tripId: string,
@@ -1553,6 +1631,9 @@ export class CuaKhauSoService {
     let lastObservedAt: Date | undefined;
     const syncedDeclarations: string[] = [];
 
+    // Phase 1: Scan list pages and update mirror summaries (fast, no detail fetch)
+    const allDeclarationsInWindow: CuaKhauSoDeclarationSummary[] = [];
+
     for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
       const response = await this.client.getDeclarations(sourceSession, {
         pageNumber,
@@ -1585,23 +1666,44 @@ export class CuaKhauSoService {
         break;
       }
 
-      for (const declaration of declarationsInWindow) {
-        try {
+      allDeclarationsInWindow.push(...declarationsInWindow);
+
+      if (
+        this.shouldStopScanningByFromDate(mapped.declarations, from) ||
+        mapped.totalPage <= pageNumber
+      ) {
+        break;
+      }
+    }
+
+    // Phase 2: Only fetch details for declarations linked to active trips
+    const linkedExternalIds = await this.findLinkedDeclarationExternalIds(
+      account.organizationId,
+      allDeclarationsInWindow
+    );
+    const declarationsToSync = allDeclarationsInWindow.filter(
+      (declaration) => linkedExternalIds.has(declaration.externalId)
+    );
+
+    // Phase 3: Fetch details in parallel batches
+    const concurrency = 5;
+    for (let i = 0; i < declarationsToSync.length; i += concurrency) {
+      const batch = declarationsToSync.slice(i, i + concurrency);
+      const batchResults = await Promise.allSettled(
+        batch.map(async (declaration) => {
           const detailResponse = await this.client.getDeclarationDetail(
             sourceSession,
             declaration.externalId
           );
 
           if (!detailResponse.data) {
-            failedDeclarations += 1;
-            continue;
+            return { status: 'no_data' as const, declaration };
           }
 
           const enrichedDetail = await this.enrichDeclarationDetailWithEmptyVehicleLogs(
             sourceSession,
             detailResponse.data
           );
-          detailsFetched += 1;
           const result = await this.syncDeclarationDetail(
             user,
             account.organizationId,
@@ -1611,21 +1713,44 @@ export class CuaKhauSoService {
             syncRunId
           );
 
-          eventsCreated += result.recordedEvents.length;
-          eventsSkipped += result.skippedEvents.length;
-          syncedDeclarations.push(declaration.declarationNumber);
-        } catch {
-          failedDeclarations += 1;
-        }
-      }
+          return { status: 'ok' as const, declaration, result };
+        })
+      );
 
-      if (
-        this.shouldStopScanningByFromDate(mapped.declarations, from) ||
-        mapped.totalPage <= pageNumber
-      ) {
-        break;
+      for (const settled of batchResults) {
+        if (settled.status === 'rejected') {
+          failedDeclarations += 1;
+          continue;
+        }
+
+        const value = settled.value;
+
+        if (value.status === 'no_data') {
+          failedDeclarations += 1;
+          continue;
+        }
+
+        detailsFetched += 1;
+        eventsCreated += value.result.recordedEvents.length;
+        eventsSkipped += value.result.skippedEvents.length;
+        syncedDeclarations.push(value.declaration.declarationNumber);
       }
     }
+
+    // Reconcile stale trips: find internal declarations linked to non-terminal trips
+    // whose CKS status may have moved to APPROVED since the last sync.
+    const reconciled = await this.reconcileCompletedDeclarations(
+      sourceSession,
+      account,
+      user,
+      syncRunId,
+      from
+    );
+    detailsFetched += reconciled.detailsFetched;
+    eventsCreated += reconciled.eventsCreated;
+    eventsSkipped += reconciled.eventsSkipped;
+    failedDeclarations += reconciled.failedDeclarations;
+    syncedDeclarations.push(...reconciled.syncedDeclarations);
 
     const result: OrganizationSyncResult = {
       recordsFetched,
@@ -1641,6 +1766,166 @@ export class CuaKhauSoService {
     }
 
     return result;
+  }
+
+  private async findLinkedDeclarationExternalIds(
+    organizationId: string,
+    declarations: CuaKhauSoDeclarationSummary[]
+  ): Promise<Set<string>> {
+    const externalIds = declarations.map((d) => d.externalId).filter(Boolean);
+
+    if (externalIds.length === 0) {
+      return new Set();
+    }
+
+    // Find declarations that have linked active trips
+    const linked = await this.prisma.customsDeclaration.findMany({
+      where: {
+        organizationId,
+        sourceProvider: 'CUA_KHAU_SO',
+        sourceExternalId: { in: externalIds },
+        trips: {
+          some: {
+            deletedAt: null,
+            currentStatus: {
+              notIn: [...terminalTripStatuses]
+            }
+          }
+        }
+      },
+      select: { sourceExternalId: true }
+    });
+
+    return new Set(
+      linked
+        .map((d) => d.sourceExternalId)
+        .filter((id): id is string => id !== null)
+    );
+  }
+
+  private async reconcileCompletedDeclarations(
+    sourceSession: ReturnType<CuaKhauSoService['withSessionExpiry']>,
+    account: Pick<IntegrationAccount, 'id' | 'organizationId'>,
+    user: RequestUser | undefined,
+    syncRunId: string | undefined,
+    from: Date
+  ) {
+    let detailsFetched = 0;
+    let eventsCreated = 0;
+    let eventsSkipped = 0;
+    let failedDeclarations = 0;
+    const syncedDeclarations: string[] = [];
+
+    // Find internal mirror declarations that are NOT yet APPROVED/CANCELLED,
+    // but are linked to trips that are still in-progress.
+    const staleDeclarations = await this.prisma.customsDeclaration.findMany({
+      where: {
+        organizationId: account.organizationId,
+        sourceProvider: 'CUA_KHAU_SO',
+        status: {
+          notIn: ['APPROVED', 'CANCELLED']
+        },
+        sourceExternalId: {
+          not: null
+        },
+        trips: {
+          some: {
+            deletedAt: null,
+            currentStatus: {
+              notIn: [...terminalTripStatuses]
+            }
+          }
+        }
+      },
+      select: {
+        id: true,
+        declarationNumber: true,
+        sourceExternalId: true
+      },
+      take: 50
+    });
+
+    const validDeclarations = staleDeclarations.filter(
+      (d): d is typeof d & { sourceExternalId: string } => d.sourceExternalId !== null
+    );
+
+    const concurrency = 5;
+    for (let i = 0; i < validDeclarations.length; i += concurrency) {
+      const batch = validDeclarations.slice(i, i + concurrency);
+      const batchResults = await Promise.allSettled(
+        batch.map(async (declaration) => {
+          const detailResponse = await this.client.getDeclarationDetail(
+            sourceSession,
+            declaration.sourceExternalId
+          );
+
+          if (!detailResponse.data) {
+            await this.markDeclarationRemovedFromSource(
+              account.organizationId,
+              declaration.id,
+              declaration.declarationNumber
+            );
+            return { status: 'removed' as const, declaration };
+          }
+
+          const enrichedDetail = await this.enrichDeclarationDetailWithEmptyVehicleLogs(
+            sourceSession,
+            detailResponse.data
+          );
+          const result = await this.syncDeclarationDetail(
+            user,
+            account.organizationId,
+            declaration.sourceExternalId,
+            enrichedDetail,
+            account,
+            syncRunId
+          );
+
+          return { status: 'ok' as const, declaration, result };
+        })
+      );
+
+      for (const settled of batchResults) {
+        if (settled.status === 'rejected') {
+          const error = settled.reason;
+          const declaration = batch[batchResults.indexOf(settled)];
+
+          if (declaration && !(error instanceof BadRequestException)) {
+            try {
+              await this.markDeclarationRemovedFromSource(
+                account.organizationId,
+                declaration.id,
+                declaration.declarationNumber
+              );
+              syncedDeclarations.push(declaration.declarationNumber);
+            } catch {
+              failedDeclarations += 1;
+            }
+          } else {
+            failedDeclarations += 1;
+          }
+
+          continue;
+        }
+
+        const value = settled.value;
+        syncedDeclarations.push(value.declaration.declarationNumber);
+
+        if (value.status === 'ok') {
+          detailsFetched += 1;
+          eventsCreated += value.result.recordedEvents.length;
+          eventsSkipped += value.result.skippedEvents.length;
+        }
+      }
+    }
+
+    return {
+      detailsFetched,
+      eventsCreated,
+      eventsSkipped,
+      failedDeclarations,
+      syncedDeclarations
+    };
   }
 
   private async resolveLinkedTrip(
