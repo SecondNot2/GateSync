@@ -78,10 +78,11 @@ export class NotificationsService {
     @Inject(ConfigService) private readonly configService: ConfigService
   ) {}
 
-  async listUserNotifications(user: RequestUser) {
+  async listUserNotifications(user: RequestUser, afterDate?: Date) {
     return this.prisma.notification.findMany({
       where: {
-        recipientUserId: user.id
+        recipientUserId: user.id,
+        ...(afterDate ? { createdAt: { gt: afterDate } } : {})
       },
       include: {
         trip: {
@@ -307,14 +308,6 @@ export class NotificationsService {
     }
 
     if (fieldOperatorEventTypes.some((item) => item === eventType)) {
-      roles.add('FIELD_OPERATOR');
-    }
-
-    if (!documentStaffEventTypes.some((item) => item === eventType)) {
-      roles.add('DOCUMENT_STAFF');
-    }
-
-    if (!fieldOperatorEventTypes.some((item) => item === eventType)) {
       roles.add('FIELD_OPERATOR');
     }
 

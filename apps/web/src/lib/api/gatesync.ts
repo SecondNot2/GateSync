@@ -69,8 +69,10 @@ export const gatesyncApi = {
   getMe: ({ accessToken }: AuthenticatedOptions) =>
     apiClient.get<ApiCurrentUser>('/me', { accessToken }),
 
-  listNotifications: ({ accessToken }: AuthenticatedOptions) =>
-    apiClient.get<ApiNotification[]>('/notifications', { accessToken }),
+  listNotifications: (options: AuthenticatedOptions & { after?: string }) => {
+    const params = options.after ? `?after=${encodeURIComponent(options.after)}` : '';
+    return apiClient.get<ApiNotification[]>(`/notifications${params}`, { accessToken: options.accessToken });
+  },
 
   markNotificationRead: (notificationId: string, { accessToken }: AuthenticatedOptions) =>
     apiClient.patch<ApiNotification>(`/notifications/${notificationId}/read`, {}, { accessToken }),

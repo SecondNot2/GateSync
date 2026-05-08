@@ -395,6 +395,7 @@ export class TripsService {
     const findArgs: Prisma.TripFindManyArgs = {
       where,
       include: tripSummaryInclude,
+      relationLoadStrategy: 'query',
       orderBy: [
         {
           plannedStartAt: 'desc'
@@ -790,7 +791,8 @@ export class TripsService {
         organizationId,
         deletedAt: null
       },
-      include: tripDetailInclude
+      include: tripDetailInclude,
+      relationLoadStrategy: 'query'
     });
 
     if (!trip) {

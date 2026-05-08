@@ -18,6 +18,7 @@ type AppShellProps = {
   description: string;
   action?: ReactNode;
   organization?: OperationsOrganizationContext;
+  unreadNotificationCount?: number;
   children: ReactNode;
 };
 
@@ -37,6 +38,7 @@ export function AppShell({
   description,
   action,
   organization,
+  unreadNotificationCount = 0,
   children
 }: AppShellProps) {
   const [isSidebarCompact, setIsSidebarCompact] = useState(false);
@@ -286,31 +288,133 @@ export function AppShell({
           {children}
         </section>
       </div>
-      <nav className="fixed inset-x-3 bottom-3 z-30 flex gap-1 rounded-3xl border border-slate-200 bg-white/95 p-1.5 shadow-soft backdrop-blur lg:hidden">
-        {navItems.map((item) => {
-          const isActive = item.key === activeNav;
-
-          return (
-            <Link
-              key={item.key}
-              href={item.href}
-              className={`flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-center text-[0.72rem] font-semibold transition ${
-                isActive ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <span>{item.shortLabel}</span>
-              {item.badge ? (
-                <span
-                  className={`mt-0.5 text-[0.62rem] ${isActive ? 'text-slate-200' : 'text-slate-400'}`}
-                >
-                  {item.badge}
-                </span>
-              ) : null}
-            </Link>
-          );
-        })}
+      <nav className="fixed inset-x-3 bottom-3 z-30 flex items-end gap-1 rounded-3xl border border-slate-200 bg-white/95 p-1.5 shadow-soft backdrop-blur lg:hidden">
+        <BottomTab
+          href="/dashboard"
+          label="Tổng quan"
+          active={activeNav === 'dashboard'}
+          icon={<DashboardIcon />}
+        />
+        <BottomTab
+          href="/trips"
+          label="Chuyến xe"
+          active={activeNav === 'trips'}
+          icon={<TruckIcon />}
+          {...(currentOrganization.tripBadge ? { badge: currentOrganization.tripBadge } : {})}
+        />
+        <Link
+          href="/scan"
+          className="relative -mt-2 flex h-14 w-14 flex-col items-center justify-center rounded-full bg-slate-950 text-white shadow-lg shadow-slate-950/20 transition hover:bg-slate-800"
+        >
+          <QrScanIcon />
+          <span className="mt-0.5 text-[0.6rem] font-bold">Quét</span>
+        </Link>
+        <BottomTab
+          href="/alerts"
+          label="Cảnh báo"
+          active={false}
+          icon={<BellIcon />}
+          {...(unreadNotificationCount > 0 ? { badge: String(unreadNotificationCount > 9 ? '9+' : unreadNotificationCount) } : {})}
+        />
+        <BottomTab
+          href="/settings"
+          label="Tài khoản"
+          active={activeNav === 'settings'}
+          icon={<UserIcon />}
+        />
       </nav>
     </main>
+  );
+}
+
+function BottomTab({
+  href,
+  label,
+  active,
+  icon,
+  badge
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+  icon: ReactNode;
+  badge?: string | undefined;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-center transition ${
+        active ? 'text-slate-950' : 'text-slate-400 hover:text-slate-600'
+      }`}
+    >
+      <span className="relative">
+        {icon}
+        {badge ? (
+          <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[0.55rem] font-bold text-white">
+            {badge}
+          </span>
+        ) : null}
+      </span>
+      {active ? (
+        <span className="mt-0.5 text-[0.62rem] font-bold">{label}</span>
+      ) : null}
+    </Link>
+  );
+}
+
+function DashboardIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  );
+}
+
+function TruckIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h1" />
+      <path d="M15 18H9" />
+      <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" />
+      <circle cx="7" cy="18" r="2" />
+      <circle cx="19" cy="18" r="2" />
+    </svg>
+  );
+}
+
+function QrScanIcon() {
+  return (
+    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+      <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+      <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+      <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+      <rect x="7" y="7" width="4" height="4" />
+      <rect x="13" y="7" width="4" height="4" />
+      <rect x="7" y="13" width="4" height="4" />
+      <path d="M13 13h4v4h-4z" />
+    </svg>
+  );
+}
+
+function BellIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="5" />
+      <path d="M20 21a8 8 0 1 0-16 0" />
+    </svg>
   );
 }
 

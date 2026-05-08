@@ -24,3 +24,5 @@ packages/database/generated/
 
 graphify-out/
 
+.claude/
+CLAUDE.md

@@ -113,9 +113,7 @@ export function hasAdvancedTripFilters(filters: ListTripsParams) {
     filters.yardId ||
     filters.driverProfileId ||
     filters.vehicleId ||
-    filters.cargoOwnerOrganizationId ||
-    filters.from ||
-    filters.to
+    filters.cargoOwnerOrganizationId
   );
 }
 

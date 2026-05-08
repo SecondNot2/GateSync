@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Param, Patch, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Param, Patch, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/request-user';
@@ -13,8 +13,13 @@ export class NotificationsController {
   constructor(@Inject(NotificationsService) private readonly notifications: NotificationsService) {}
 
   @Get()
-  listNotifications(@CurrentUser() user: RequestUser) {
-    return this.notifications.listUserNotifications(user);
+  listNotifications(
+    @CurrentUser() user: RequestUser,
+    @Query('after') after?: string
+  ) {
+    const afterDate = after ? new Date(after) : undefined;
+
+    return this.notifications.listUserNotifications(user, afterDate);
   }
 
   @Patch(':notificationId/read')

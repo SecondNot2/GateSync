@@ -4,11 +4,14 @@ import type { TripEventType } from '@gatesync/shared';
 import Link from 'next/link';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { AppShell } from '@/components/app-shell';
+import { ConflictDialog } from '@/components/conflict-dialog';
 import { NoOrganizationState } from '@/components/no-organization-state';
 import { PriorityBadge, TripStatusBadge } from '@/components/status-badge';
 import { TripTimeline } from '@/components/trip-timeline';
 import { Button, DateTimeInput, SelectInput, StatePanel, TextareaInput } from '@/components/ui';
+import { ConflictError } from '@/lib/api/client';
 import { createManualTripEvent, loadTripDetailData } from '@/lib/operations/data';
 import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
 import type { TripDetailViewData } from '@/lib/operations/view-model';
@@ -73,6 +76,8 @@ export function TripDetailClient({
   const [note, setNote] = useState('');
   const [submitMessage, setSubmitMessage] = useState<string>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [conflictOpen, setConflictOpen] = useState(false);
+  const [conflictMessage, setConflictMessage] = useState<string>();
   const shellProps = data?.organization ? { organization: data.organization } : {};
 
   useEffect(() => {
@@ -130,6 +135,32 @@ export function TripDetailClient({
     setIsSubmitting(true);
     setSubmitMessage(undefined);
 
+    const previousData = data;
+
+    // Optimistic: show a temporary pending event in the timeline
+    if (data?.trip) {
+      setData({
+        ...data,
+        trip: {
+          ...data.trip,
+          events: [
+            ...data.trip.events,
+            {
+              id: `optimistic-${Date.now()}`,
+              tripId,
+              eventType,
+              occurredAt: new Date(occurredAt).toISOString(),
+              recordedAt: new Date().toISOString(),
+              eventStatus: 'RECORDED' as const,
+              source: 'MANUAL' as const,
+              actor: 'Bạn',
+              note: note.trim() || ''
+            }
+          ]
+        }
+      });
+    }
+
     try {
       const payload: Parameters<typeof createManualTripEvent>[1] = {
         eventType,
@@ -143,14 +174,23 @@ export function TripDetailClient({
 
       await createManualTripEvent(tripId, payload);
       const result = await loadTripDetailData(tripId);
+
       setData(result);
       setNote('');
       setIsFormOpen(false);
-      setSubmitMessage('Đã ghi nhận sự kiện mới vào timeline chuyến.');
+      toast.success('Đã ghi nhận sự kiện mới vào timeline chuyến.');
     } catch (submitError) {
-      setSubmitMessage(
-        submitError instanceof Error ? submitError.message : 'Không thể ghi nhận sự kiện mới.'
-      );
+      // Rollback optimistic update
+      setData(previousData);
+
+      if (submitError instanceof ConflictError) {
+        setConflictMessage(submitError.message);
+        setConflictOpen(true);
+      } else {
+        toast.error(
+          submitError instanceof Error ? submitError.message : 'Không thể ghi nhận sự kiện mới.'
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -444,6 +484,17 @@ export function TripDetailClient({
           </section>
         </>
       ) : null}
+
+      <ConflictDialog
+        isOpen={conflictOpen}
+        {...(conflictMessage ? { message: conflictMessage } : {})}
+        onClose={() => setConflictOpen(false)}
+        onReload={async () => {
+          setConflictOpen(false);
+          const result = await loadTripDetailData(tripId);
+          setData(result);
+        }}
+      />
     </AppShell>
   );
 }

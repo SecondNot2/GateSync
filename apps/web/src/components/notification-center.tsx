@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { gatesyncApi } from '@/lib/api/gatesync';
 import { resolveWebApiSession } from '@/lib/api/session';
 import type { ApiNotification, ApiNotificationPayload } from '@/lib/api/types';
@@ -13,6 +14,8 @@ type NotificationCenterProps = {
   userId?: string | undefined;
   organizationId?: string | undefined;
 };
+
+const lastSeenKey = 'gatesync_notifications_lastSeenAt';
 
 export function NotificationCenter({ userId, organizationId }: NotificationCenterProps) {
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
@@ -41,10 +44,60 @@ export function NotificationCenter({ userId, organizationId }: NotificationCente
       const result = await gatesyncApi.listNotifications({ accessToken: session.accessToken });
       setNotifications(result.filter((notification) => notification.channel === 'IN_APP'));
       latestLoadedAtRef.current = Date.now();
+
+      try {
+        sessionStorage.setItem(lastSeenKey, new Date().toISOString());
+      } catch {
+        // sessionStorage may be unavailable
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không thể tải thông báo.');
     } finally {
       setIsLoading(false);
+    }
+  }, [userId]);
+
+  const loadMissedNotifications = useCallback(async () => {
+    if (!userId) {
+      return;
+    }
+
+    try {
+      const session = await resolveWebApiSession();
+
+      if (session.mode === 'dev') {
+        return;
+      }
+
+      let after: string | undefined;
+
+      try {
+        after = sessionStorage.getItem(lastSeenKey) ?? undefined;
+      } catch {
+        // sessionStorage may be unavailable
+      }
+
+      const result = await gatesyncApi.listNotifications({
+        accessToken: session.accessToken,
+        ...(after ? { after } : {})
+      });
+      const inApp = result.filter((notification) => notification.channel === 'IN_APP');
+
+      if (inApp.length > 0) {
+        setNotifications((current) => {
+          const existingIds = new Set(current.map((n) => n.id));
+          const newOnes = inApp.filter((n) => !existingIds.has(n.id));
+          return [...newOnes, ...current];
+        });
+      }
+
+      try {
+        sessionStorage.setItem(lastSeenKey, new Date().toISOString());
+      } catch {
+        // sessionStorage may be unavailable
+      }
+    } catch {
+      // Silent fail for missed notifications — full reload available via button
     }
   }, [userId]);
 
@@ -78,7 +131,13 @@ export function NotificationCenter({ userId, organizationId }: NotificationCente
             event: '*'
           },
           () => {
-            void loadNotifications();
+            void loadMissedNotifications();
+            toast.info('Có thông báo mới', {
+              action: {
+                label: 'Xem',
+                onClick: () => setIsOpen(true)
+              }
+            });
           }
         )
         .subscribe();
@@ -88,7 +147,7 @@ export function NotificationCenter({ userId, organizationId }: NotificationCente
       isMounted = false;
       void supabase.removeChannel(channel);
     };
-  }, [loadNotifications, organizationId, userId]);
+  }, [loadMissedNotifications, organizationId, userId]);
 
   async function markRead(notificationId: string) {
     setNotifications((current) =>

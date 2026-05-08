@@ -9,6 +9,12 @@
   --border: 214 32% 91%;
   --primary: 199 89% 48%;
   --accent: 158 64% 52%;
+  --spacing-touch: 3rem;
+  --font-size-plate: 1.5rem;
+  --color-status-pending: 38 92% 50%;
+  --color-status-active: 217 91% 60%;
+  --color-status-done: 160 84% 39%;
+  --color-status-alert: 0 84% 60%;
 }
 
 * {

@@ -4,7 +4,7 @@ import { tripExceptionFilters, tripStatuses } from '@gatesync/shared';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { FormEvent } from 'react';
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { NoOrganizationState } from '@/components/no-organization-state';
 import { PriorityBadge, TripStatusBadge } from '@/components/status-badge';
@@ -86,6 +86,40 @@ export function TripsClient({
   const [cksSyncMessage, setCksSyncMessage] = useState<string | undefined>();
   const cksSyncTriggeredRef = useRef(false);
   const canSyncCks = data?.organization.currentUser?.canSyncCuaKhauSoIntegration ?? false;
+  const [additionalTrips, setAdditionalTrips] = useState<TripsViewData['trips']>([]);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const allTrips = useMemo(
+    () => [...(data?.trips ?? []), ...additionalTrips],
+    [data?.trips, additionalTrips]
+  );
+
+  const applySearchDebounced = useCallback(() => {
+    const trimmed = search.trim();
+    const currentSearch = filters.search ?? '';
+
+    if (trimmed === currentSearch) {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (trimmed) {
+      nextParams.set('search', trimmed);
+    } else {
+      nextParams.delete('search');
+    }
+
+    startTransition(() => {
+      router.push(`/trips?${nextParams.toString()}`);
+    });
+  }, [search, filters.search, searchParams, router, startTransition]);
+
+  useEffect(() => {
+    const timer = setTimeout(applySearchDebounced, 300);
+    return () => clearTimeout(timer);
+  }, [applySearchDebounced]);
 
   useEffect(() => {
     setSearch(filters.search ?? '');
@@ -98,6 +132,8 @@ export function TripsClient({
     setException(filters.exception ?? '');
     setFrom(toDateInputValue(filters.from));
     setTo(toDateInputValue(filters.to));
+    setAdditionalTrips([]);
+    setHasMore(true);
   }, [filters]);
 
   useEffect(() => {
@@ -201,6 +237,57 @@ export function TripsClient({
     cksSyncTriggeredRef.current = true;
     void triggerCksSync();
   }, [canSyncCks, isLoading]);
+
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore) {
+      return;
+    }
+
+    const lastTrip = allTrips[allTrips.length - 1];
+
+    if (!lastTrip) {
+      return;
+    }
+
+    setIsLoadingMore(true);
+
+    try {
+      const result = await loadTripsData({ ...filters, cursor: lastTrip.id, limit: 50 });
+
+      if (result.trips.length === 0) {
+        setHasMore(false);
+      } else {
+        setAdditionalTrips((current) => [...current, ...result.trips]);
+      }
+    } catch {
+      // Silent fail — user can retry by scrolling
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, hasMore, allTrips, filters]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+
+    if (!sentinel || !hasMore) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasMore, loadMore]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -439,7 +526,7 @@ export function TripsClient({
                   <h2 className="mt-2 text-2xl font-bold text-slate-950">
                     {isLoading
                       ? 'Đang tải chuyến...'
-                      : `${data?.trips.length ?? 0} chuyến cần theo dõi`}
+                      : `${allTrips.length} chuyến cần theo dõi`}
                   </h2>
                   {canSyncCks ? (
                     <button
@@ -485,14 +572,18 @@ export function TripsClient({
             {!isLoading && error ? (
               <StatePanel tone="error" className="mt-5" message={error} />
             ) : null}
-            {!isLoading && !error && data?.trips.length === 0 ? (
+            {!isLoading && !error && allTrips.length === 0 ? (
               <StatePanel
                 className="mt-5"
                 message="Không có chuyến phù hợp. Hãy nới bộ lọc hoặc tạo chuyến mới từ API vận hành."
               />
             ) : null}
-            {!isLoading && !error && data && data.trips.length > 0 ? (
-              <TripsList data={data} />
+            {!isLoading && !error && allTrips.length > 0 ? (
+              <TripsList
+                trips={allTrips}
+                sentinelRef={sentinelRef}
+                isLoadingMore={isLoadingMore}
+              />
             ) : null}
           </section>
         </>
@@ -501,7 +592,15 @@ export function TripsClient({
   );
 }
 
-function TripsList({ data }: { data: TripsViewData }) {
+function TripsList({
+  trips,
+  sentinelRef,
+  isLoadingMore
+}: {
+  trips: TripsViewData['trips'];
+  sentinelRef: React.RefObject<HTMLDivElement | null>;
+  isLoadingMore: boolean;
+}) {
   return (
     <div className="mt-5 overflow-hidden rounded-3xl border border-slate-100">
       <div className="hidden grid-cols-[1fr_1fr_0.9fr_1fr_0.75fr_0.85fr] gap-4 bg-slate-950 px-5 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300 xl:grid">
@@ -513,7 +612,7 @@ function TripsList({ data }: { data: TripsViewData }) {
         <span>Ưu tiên</span>
       </div>
       <div className="divide-y divide-slate-100 bg-white">
-        {data.trips.map((trip) => (
+        {trips.map((trip) => (
           <Link
             key={trip.id}
             href={`/trips/${trip.id}`}
@@ -568,6 +667,13 @@ function TripsList({ data }: { data: TripsViewData }) {
           </Link>
         ))}
       </div>
+      <div ref={sentinelRef} className="h-1" />
+      {isLoadingMore ? (
+        <div className="flex items-center justify-center bg-white py-4">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-sky-600" />
+          <span className="ml-2 text-xs text-slate-500">Đang tải thêm...</span>
+        </div>
+      ) : null}
     </div>
   );
 }

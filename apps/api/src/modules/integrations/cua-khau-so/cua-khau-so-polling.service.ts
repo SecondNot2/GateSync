@@ -4,12 +4,21 @@ import { ConfigService } from '@nestjs/config';
 import { IntegrationSyncQueueService } from '../integration-sync-queue.service';
 import { CuaKhauSoService } from './cua-khau-so.service';
 
+type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+
+const circuitFailureThreshold = 3;
+const circuitResetMs = 5 * 60_000;
+
 @Injectable()
 export class CuaKhauSoPollingService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CuaKhauSoPollingService.name);
   private timer?: NodeJS.Timeout;
   private isRunning = false;
   private unregisterOnDemandHandler?: () => void;
+
+  private circuitState: CircuitState = 'CLOSED';
+  private globalConsecutiveFailures = 0;
+  private circuitOpenedAt: number | undefined;
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
@@ -56,18 +65,62 @@ export class CuaKhauSoPollingService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    if (this.circuitState === 'OPEN') {
+      const elapsed = this.circuitOpenedAt ? Date.now() - this.circuitOpenedAt : Infinity;
+
+      if (elapsed < circuitResetMs) {
+        return;
+      }
+
+      this.circuitState = 'HALF_OPEN';
+      this.logger.warn('CKS circuit breaker entering HALF_OPEN — probing once.');
+    }
+
     this.isRunning = true;
 
     try {
       const result = await this.cuaKhauSoService.pollActiveAccounts();
+      const allFailed =
+        result.accountsProcessed > 0 &&
+        result.results.every((r) => r.status === 'FAILED' || r.status === 'SKIPPED');
+
+      if (allFailed) {
+        this.onPollFailure();
+      } else {
+        this.onPollSuccess();
+      }
+
       this.logger.log(`Cửa khẩu số polling processed ${result.accountsProcessed} accounts.`);
     } catch (error) {
+      this.onPollFailure();
       this.logger.error(
         error instanceof Error ? error.message : 'Cửa khẩu số polling failed.',
         error instanceof Error ? error.stack : undefined
       );
     } finally {
       this.isRunning = false;
+    }
+  }
+
+  private onPollSuccess() {
+    if (this.circuitState !== 'CLOSED') {
+      this.logger.log('CKS circuit breaker CLOSED — sync recovered.');
+    }
+
+    this.globalConsecutiveFailures = 0;
+    this.circuitState = 'CLOSED';
+  }
+
+  private onPollFailure() {
+    this.globalConsecutiveFailures += 1;
+
+    if (this.globalConsecutiveFailures >= circuitFailureThreshold) {
+      this.circuitState = 'OPEN';
+      this.circuitOpenedAt = Date.now();
+      this.logger.warn(
+        `CKS circuit breaker OPEN after ${this.globalConsecutiveFailures} consecutive failures. ` +
+          `Will retry in ${Math.round(circuitResetMs / 60_000)} minutes.`
+      );
     }
   }
 }

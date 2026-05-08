@@ -23,6 +23,13 @@ export class ApiClientError extends Error {
   }
 }
 
+export class ConflictError extends ApiClientError {
+  constructor(error: ApiErrorEnvelope['error']) {
+    super(error, 409);
+    this.name = 'ConflictError';
+  }
+}
+
 async function request<TData>(
   path: string,
   init: RequestInit = {},
@@ -46,6 +53,10 @@ async function request<TData>(
   const envelope = (await response.json()) as ApiEnvelope<TData>;
 
   if ('error' in envelope) {
+    if (response.status === 409) {
+      throw new ConflictError(envelope.error);
+    }
+
     throw new ApiClientError(envelope.error, response.status);
   }
 
