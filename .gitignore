@@ -26,3 +26,10 @@ graphify-out/
 
 .claude/
 CLAUDE.md
+
+# PWA generated files
+apps/web/public/sw.js
+apps/web/public/sw.js.map
+apps/web/public/workbox-*.js
+apps/web/public/worker-*.js
+apps/web/public/fallback-*.js
