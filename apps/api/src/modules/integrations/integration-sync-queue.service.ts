@@ -14,7 +14,7 @@ type CuaKhauSoSyncJob = {
 };
 
 const defaultDebounceMs = 2_000;
-const cuaKhauSoQueueName = 'gatesync:cua-khau-so-sync';
+const cuaKhauSoQueueName = 'gatesync-cua-khau-so-sync';
 
 @Injectable()
 export class IntegrationSyncQueueService implements OnModuleDestroy {
