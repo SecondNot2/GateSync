@@ -104,11 +104,9 @@ test('listTrips applies Sprint 3 filters and search with tenant scope', async ()
         cargoOwnerOrganizationId: string;
       };
     };
-    plannedStartAt: {
-      gte?: Date;
-      lte?: Date;
-    };
-    OR: Array<Record<string, unknown>>;
+    AND: Array<{
+      OR: Array<Record<string, unknown>>;
+    }>;
   };
   assert.equal(findArgs?.take, 25);
   assert.equal(findArgs?.skip, 1);
@@ -121,16 +119,33 @@ test('listTrips applies Sprint 3 filters and search with tenant scope', async ()
   assert.equal(where.driverProfileId, query.driverProfileId);
   assert.equal(where.vehicleId, query.vehicleId);
   assert.equal(where.shipment.is.cargoOwnerOrganizationId, query.cargoOwnerOrganizationId);
-  assert.equal(where.plannedStartAt.gte?.toISOString(), query.from);
-  assert.equal(where.plannedStartAt.lte?.toISOString(), query.to);
-  assert.equal(where.OR.length, 8);
-  assert.deepEqual(where.OR[0], {
+  const dateFilter = where.AND[0]?.OR;
+  const searchFilter = where.AND[1]?.OR;
+  assert.equal(dateFilter?.length, 4);
+  assert.deepEqual(dateFilter?.[0], {
+    plannedStartAt: {
+      gte: new Date(query.from!),
+      lte: new Date(query.to!)
+    }
+  });
+  assert.deepEqual(dateFilter?.[1], {
+    customsDeclaration: {
+      is: {
+        submittedAt: {
+          gte: new Date(query.from!),
+          lte: new Date(query.to!)
+        }
+      }
+    }
+  });
+  assert.equal(searchFilter?.length, 8);
+  assert.deepEqual(searchFilter?.[0], {
     tripCode: {
       contains: '29H',
       mode: 'insensitive'
     }
   });
-  assert.deepEqual(where.OR[7], {
+  assert.deepEqual(searchFilter?.[7], {
     customsDeclaration: {
       is: {
         OR: [

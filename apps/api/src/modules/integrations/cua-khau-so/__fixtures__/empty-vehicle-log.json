@@ -1,0 +1,14 @@
+{
+    "result": 1,
+    "code": "00",
+    "message": "Thành công",
+    "data": [
+        {
+            "vehicleFormId": "4b00ab94-525c-4c37-952f-9860e7a20eda",
+            "action": 0,
+            "actionName": "Đăng ký xe không vào cửa khẩu",
+            "datetimeAction": "2026-05-06T11:02:27.518Z",
+            "value": "{\r\n  \"$id\": \"1\",\r\n  \"Id\": \"4b00ab94-525c-4c37-952f-9860e7a20eda\",\r\n  \"CtgGateId\": \"cff45a10-a650-47bc-922d-5d6387c43bd3\",\r\n  \"LicencePlate\": \"98F00740\",\r\n  \"NumberOfTrailer\": \"98R03688\",\r\n  \"NumberOfContainer\": \"TNAU9000302\"\r\n}"
+        }
+    ]
+}

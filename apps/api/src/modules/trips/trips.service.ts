@@ -208,7 +208,6 @@ const tripDetailInclude = {
   }
 } satisfies Prisma.TripInclude;
 
-const terminalTripStatuses = ['COMPLETED', 'CANCELLED'] as const;
 const defaultTripWindowDays = 7;
 
 @Injectable()
@@ -236,20 +235,10 @@ export class TripsService {
       organizationId,
       deletedAt: null
     };
+    const andFilters: Prisma.TripWhereInput[] = [];
 
     if (query.status) {
       where.currentStatus = query.status;
-    } else {
-      where.currentStatus = {
-        notIn: [...terminalTripStatuses]
-      };
-      where.NOT = {
-        customsDeclaration: {
-          is: {
-            status: 'APPROVED'
-          }
-        }
-      };
     }
 
     if (query.borderGateId) {
@@ -276,22 +265,51 @@ export class TripsService {
       };
     }
 
-    const plannedStartAt: Prisma.DateTimeNullableFilter = {};
+    const tripDateRange: Prisma.DateTimeNullableFilter = {};
 
-    plannedStartAt.gte = query.from ? new Date(query.from) : this.getDefaultTripWindowStart();
+    tripDateRange.gte = query.from
+      ? this.parseFilterDate(query.from, 'start')
+      : this.getDefaultTripWindowStart();
 
     if (query.to) {
-      plannedStartAt.lte = new Date(query.to);
+      tripDateRange.lte = this.parseFilterDate(query.to, 'end');
     } else {
-      plannedStartAt.lte = this.getDefaultTripWindowEnd();
+      tripDateRange.lte = this.getDefaultTripWindowEnd();
     }
 
-    if (plannedStartAt.gte || plannedStartAt.lte) {
-      if (plannedStartAt.gte && plannedStartAt.lte && plannedStartAt.gte > plannedStartAt.lte) {
+    if (tripDateRange.gte || tripDateRange.lte) {
+      if (tripDateRange.gte && tripDateRange.lte && tripDateRange.gte > tripDateRange.lte) {
         throw new BadRequestException('From date must be before to date.');
       }
 
-      where.plannedStartAt = plannedStartAt;
+      andFilters.push({
+        OR: [
+          {
+            plannedStartAt: tripDateRange
+          },
+          {
+            customsDeclaration: {
+              is: {
+                submittedAt: tripDateRange
+              }
+            }
+          },
+          {
+            customsDeclaration: {
+              is: {
+                sourceUpdatedAt: tripDateRange
+              }
+            }
+          },
+          {
+            customsDeclaration: {
+              is: {
+                sourceObservedAt: tripDateRange
+              }
+            }
+          }
+        ]
+      });
     }
 
     const search = query.search?.trim();
@@ -302,95 +320,101 @@ export class TripsService {
         mode: Prisma.QueryMode.insensitive
       };
 
-      where.OR = [
-        {
-          tripCode: containsSearch
-        },
-        {
-          vehicle: {
-            is: {
-              plateNumber: containsSearch
-            }
-          }
-        },
-        {
-          driverProfile: {
-            is: {
-              phone: containsSearch
-            }
-          }
-        },
-        {
-          driverProfile: {
-            is: {
-              user: {
-                fullName: containsSearch
+      andFilters.push({
+        OR: [
+          {
+            tripCode: containsSearch
+          },
+          {
+            vehicle: {
+              is: {
+                plateNumber: containsSearch
               }
             }
-          }
-        },
-        {
-          driverProfile: {
-            is: {
-              user: {
+          },
+          {
+            driverProfile: {
+              is: {
                 phone: containsSearch
               }
             }
-          }
-        },
-        {
-          borderGate: {
-            is: {
-              name: containsSearch
-            }
-          }
-        },
-        {
-          yard: {
-            is: {
-              name: containsSearch
-            }
-          }
-        },
-        {
-          customsDeclaration: {
-            is: {
-              OR: [
-                {
-                  declarationNumber: containsSearch
-                },
-                {
-                  customsOfficeCode: containsSearch
-                },
-                {
-                  sourceStatus: containsSearch
-                },
-                {
-                  normalizedSummary: {
-                    path: ['companyGoodsName'],
-                    string_contains: search,
-                    mode: Prisma.QueryMode.insensitive
-                  }
-                },
-                {
-                  normalizedSummary: {
-                    path: ['plateNumber'],
-                    string_contains: search,
-                    mode: Prisma.QueryMode.insensitive
-                  }
-                },
-                {
-                  sourceSnapshot: {
-                    path: ['goods', '0', 'declarationNumber'],
-                    string_contains: search,
-                    mode: Prisma.QueryMode.insensitive
-                  }
+          },
+          {
+            driverProfile: {
+              is: {
+                user: {
+                  fullName: containsSearch
                 }
-              ]
+              }
+            }
+          },
+          {
+            driverProfile: {
+              is: {
+                user: {
+                  phone: containsSearch
+                }
+              }
+            }
+          },
+          {
+            borderGate: {
+              is: {
+                name: containsSearch
+              }
+            }
+          },
+          {
+            yard: {
+              is: {
+                name: containsSearch
+              }
+            }
+          },
+          {
+            customsDeclaration: {
+              is: {
+                OR: [
+                  {
+                    declarationNumber: containsSearch
+                  },
+                  {
+                    customsOfficeCode: containsSearch
+                  },
+                  {
+                    sourceStatus: containsSearch
+                  },
+                  {
+                    normalizedSummary: {
+                      path: ['companyGoodsName'],
+                      string_contains: search,
+                      mode: Prisma.QueryMode.insensitive
+                    }
+                  },
+                  {
+                    normalizedSummary: {
+                      path: ['plateNumber'],
+                      string_contains: search,
+                      mode: Prisma.QueryMode.insensitive
+                    }
+                  },
+                  {
+                    sourceSnapshot: {
+                      path: ['goods', '0', 'declarationNumber'],
+                      string_contains: search,
+                      mode: Prisma.QueryMode.insensitive
+                    }
+                  }
+                ]
+              }
             }
           }
-        }
-      ];
+        ]
+      });
+    }
+
+    if (andFilters.length > 0) {
+      where.AND = andFilters;
     }
 
     const findArgs: Prisma.TripFindManyArgs = {
@@ -445,6 +469,24 @@ export class TripsService {
     const date = new Date();
     date.setHours(23, 59, 59, 999);
     return date;
+  }
+
+  private parseFilterDate(value: string, boundary: 'start' | 'end') {
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (dateOnly) {
+      const [, year, month, day] = dateOnly;
+      const date = new Date(Number(year), Number(month) - 1, Number(day));
+      date.setHours(
+        boundary === 'start' ? 0 : 23,
+        boundary === 'start' ? 0 : 59,
+        boundary === 'start' ? 0 : 59,
+        boundary === 'start' ? 0 : 999
+      );
+      return date;
+    }
+
+    return new Date(value);
   }
 
   private hashCacheKey(value: unknown) {

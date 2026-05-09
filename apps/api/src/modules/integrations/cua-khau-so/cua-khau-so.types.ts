@@ -47,6 +47,7 @@ export type CuaKhauSoDeclarationLite = {
   createDate?: string | null;
   type?: 0 | 1 | number | null;
   gate?: CuaKhauSoGateInfo | null;
+  /** @deprecated Luôn trả về false trong dữ liệu thực tế. Dùng `confirmFinish` thay thế. */
   isFinish?: boolean | null;
   confirmFinish?: boolean | null;
   checkAllConfirmOutVN?: boolean | null;

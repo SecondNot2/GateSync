@@ -398,7 +398,7 @@ export class CuaKhauSoMapper {
       );
     }
 
-    if (detail.isFinish) {
+    if (detail.confirmFinish) {
       this.addCandidate(
         candidates,
         organizationId,
@@ -964,7 +964,7 @@ export class CuaKhauSoMapper {
   }
 
   private isBusinessCompleted(declaration: CuaKhauSoDeclarationLite) {
-    if (declaration.isFinish) {
+    if (declaration.confirmFinish) {
       return true;
     }
 
@@ -993,6 +993,26 @@ export class CuaKhauSoMapper {
 
     if (!trimmed) {
       return undefined;
+    }
+
+    const vietnameseDate = trimmed.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+    );
+
+    if (vietnameseDate) {
+      const [, day, month, year, hour = '0', minute = '0', second = '0'] = vietnameseDate;
+      const date = new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+        Number(hour),
+        Number(minute),
+        Number(second)
+      );
+
+      if (!Number.isNaN(date.getTime())) {
+        return date;
+      }
     }
 
     const date = new Date(trimmed);

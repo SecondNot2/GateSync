@@ -428,10 +428,20 @@ test('syncDeclaration creates a GateSync Trip when no matching trip exists', asy
           tripCode: data.tripCode,
           customsDeclarationId: data.customsDeclarationId,
           vehicleId: null,
-          driverProfileId: null
+          driverProfileId: null,
+          plannedStartAt: data.plannedStartAt,
+          currentStatus: 'PLANNED'
         };
       },
-      update: async () => undefined
+      update: async ({ data }: { data: Record<string, unknown> }) => ({
+        id: '00000000-0000-4000-8000-000000000021',
+        tripCode: tripCreateData?.tripCode,
+        customsDeclarationId: data.customsDeclarationId ?? '00000000-0000-4000-8000-000000000013',
+        vehicleId: null,
+        driverProfileId: null,
+        plannedStartAt: data.plannedStartAt ?? tripCreateData?.plannedStartAt,
+        currentStatus: 'PLANNED'
+      })
     },
     vehicle: {
       findFirst: async () => null

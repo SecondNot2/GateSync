@@ -188,6 +188,108 @@ test('CuaKhauSoMapper requires license and VN transshipment vehicle BP/HQ times 
   assert.equal(mapped.transshipmentVehicles[0]?.customsEntered, true);
 });
 
+test('CuaKhauSoMapper maps export declaration with correct direction and completion', () => {
+  const mapper = new CuaKhauSoMapper();
+  const raw = JSON.parse(
+    readFileSync(
+      path.resolve(
+        process.cwd(),
+        'src/modules/integrations/cua-khau-so/__fixtures__/export-completed.json'
+      ),
+      'utf8'
+    )
+  ) as CuaKhauSoDeclarationDetail;
+
+  const mapped = mapper.mapSummary(raw);
+
+  assert.equal(mapped.direction, 'EXPORT');
+  assert.equal(mapped.declarationType, 'EXPORT');
+  assert.equal(mapped.completed, true);
+  assert.equal(mapped.statusLabel, 'Hoàn thành');
+  assert.equal(mapped.paymentStatus, 'Đã thanh toán');
+});
+
+test('CuaKhauSoMapper generates BORDER_GATE_EXIT_CONFIRMED when confirmFinish is true even if isFinish is false', () => {
+  const mapper = new CuaKhauSoMapper();
+  const raw = JSON.parse(
+    readFileSync(
+      path.resolve(
+        process.cwd(),
+        'src/modules/integrations/cua-khau-so/__fixtures__/export-completed.json'
+      ),
+      'utf8'
+    )
+  ) as CuaKhauSoDeclarationDetail;
+
+  assert.equal(raw.isFinish, false);
+  assert.equal(raw.confirmFinish, true);
+
+  const candidates = mapper.buildEventCandidates(raw, 'org-1');
+  const exitEvent = candidates.find((c) => c.eventType === 'BORDER_GATE_EXIT_CONFIRMED');
+
+  assert.ok(exitEvent, 'BORDER_GATE_EXIT_CONFIRMED should be generated when confirmFinish is true');
+  assert.equal(
+    candidates.some((c) => c.eventType === 'BORDER_GATE_ENTRY_CONFIRMED'),
+    true
+  );
+  assert.equal(
+    candidates.some((c) => c.eventType === 'FEE_PAID'),
+    true
+  );
+});
+
+test('CuaKhauSoMapper maps plain import without transshipment', () => {
+  const mapper = new CuaKhauSoMapper();
+  const raw = JSON.parse(
+    readFileSync(
+      path.resolve(
+        process.cwd(),
+        'src/modules/integrations/cua-khau-so/__fixtures__/import-plain.json'
+      ),
+      'utf8'
+    )
+  ) as CuaKhauSoDeclarationDetail;
+
+  const mapped = mapper.mapDetail(raw, 'org-1');
+
+  assert.equal(mapped.direction, 'IMPORT');
+  assert.equal(mapped.declarationType, 'IMPORT');
+  assert.equal(mapped.completed, false);
+  assert.equal(mapped.transshipmentVehicles.length, 0);
+  assert.equal(mapped.transshipment.eligible, false);
+  assert.equal(mapped.transshipment.signed, false);
+});
+
+test('CuaKhauSoMapper handles border guard lag with WAITING_AUTHORITY status', () => {
+  const mapper = new CuaKhauSoMapper();
+  const mapped = mapper.mapDetail(
+    {
+      id: 'lag-test-001',
+      numberOfDeclaration: '20260509LAG01',
+      createDate: '2026-05-09T10:00:00',
+      type: 0,
+      registrationTransportDetails: [
+        {
+          vehicleNationalityType: 'CN',
+          checkBorderGuard: false,
+          confirmArrivalVehicleCustoms: true,
+          confirmArrivalVehicleCustomsTime: '2026-05-09T10:05:00'
+        }
+      ]
+    },
+    'org-1'
+  );
+
+  assert.equal(mapped.procedureSteps[0]?.done, false);
+  assert.equal(mapped.procedureSteps[0]?.status, 'WAITING_AUTHORITY');
+  assert.equal(mapped.transshipment.borderGuardLagging, true);
+  assert.equal(
+    mapped.eventCandidates.some((e) => e.eventType === 'BORDER_GATE_ENTRY_CONFIRMED'),
+    false,
+    'Should not generate BORDER_GATE_ENTRY_CONFIRMED when border guard has not confirmed'
+  );
+});
+
 test('CuaKhauSoMapper omits event candidates without trusted timestamps', () => {
   const mapper = new CuaKhauSoMapper();
   const candidates = mapper.buildEventCandidates(

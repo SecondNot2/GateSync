@@ -210,7 +210,9 @@ export function TripsClient({
 
       if (result.skipped) {
         if (result.reason === 'THROTTLED') {
-          setCksSyncMessage('GateSync vừa kiểm tra nguồn Cửa khẩu số, vui lòng chờ một chút trước khi thử lại.');
+          setCksSyncMessage(
+            'GateSync vừa kiểm tra nguồn Cửa khẩu số, vui lòng chờ một chút trước khi thử lại.'
+          );
         } else {
           setCksSyncMessage(
             'Worker khác đang đối chiếu Cửa khẩu số. Dữ liệu hiện tại đã là mới nhất.'
@@ -246,7 +248,6 @@ export function TripsClient({
     cksSyncTriggeredRef.current = true;
     void triggerCksSync();
   }, [canSyncCks, isLoading]);
-
 
   const loadMore = useCallback(async () => {
     if (isLoadingMore || !hasMore) {
@@ -340,11 +341,11 @@ export function TripsClient({
     }
 
     if (from) {
-      nextParams.set('from', `${from}T00:00:00.000Z`);
+      nextParams.set('from', from);
     }
 
     if (to) {
-      nextParams.set('to', `${to}T23:59:59.999Z`);
+      nextParams.set('to', to);
     }
 
     const query = nextParams.toString();
@@ -408,7 +409,7 @@ export function TripsClient({
                   label="Trạng thái"
                   value={status}
                   options={[
-                    { value: '', label: 'Chưa hoàn thành nghiệp vụ' },
+                    { value: '', label: 'Tất cả' },
                     ...tripStatuses.map((tripStatus) => ({
                       value: tripStatus,
                       label: tripStatusLabels[tripStatus]
@@ -499,11 +500,7 @@ export function TripsClient({
                 <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   <FilterSummary
                     label="Trạng thái"
-                    value={
-                      filters.status
-                        ? tripStatusLabels[filters.status]
-                        : 'Chưa hoàn thành nghiệp vụ'
-                    }
+                    value={filters.status ? tripStatusLabels[filters.status] : 'Tất cả'}
                   />
                   <FilterSummary
                     label="Ngoại lệ"
@@ -538,9 +535,7 @@ export function TripsClient({
                 </p>
                 <div className="flex items-center gap-3">
                   <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                    {isLoading
-                      ? 'Đang tải chuyến...'
-                      : `${allTrips.length} chuyến cần theo dõi`}
+                    {isLoading ? 'Đang tải chuyến...' : `${allTrips.length} chuyến cần theo dõi`}
                   </h2>
                   {canSyncCks ? (
                     <button
@@ -567,7 +562,8 @@ export function TripsClient({
                 </div>
               </div>
               <p className="max-w-2xl text-sm leading-6 text-slate-600">
-                Sắp xếp theo mức độ cần theo dõi để điều phối viên mở đúng chuyến trước.
+                Chuyến chưa hoàn thành được ưu tiên trước, các chuyến đã hoàn thành được xếp xuống
+                dưới.
               </p>
             </div>
             {cksSyncMessage ? (
@@ -593,11 +589,7 @@ export function TripsClient({
               />
             ) : null}
             {!isLoading && !error && allTrips.length > 0 ? (
-              <TripsList
-                trips={allTrips}
-                sentinelRef={sentinelRef}
-                isLoadingMore={isLoadingMore}
-              />
+              <TripsList trips={allTrips} sentinelRef={sentinelRef} isLoadingMore={isLoadingMore} />
             ) : null}
           </section>
         </>

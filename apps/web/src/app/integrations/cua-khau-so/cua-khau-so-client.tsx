@@ -24,26 +24,12 @@ import {
   runCuaKhauSoSyncNow,
   syncCuaKhauSoDeclaration
 } from '@/lib/operations/data';
+import { DIRECTION_FILTERS, PAGE_SIZE_OPTIONS, STATUS_FILTERS } from './constants';
 import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
 import type { CuaKhauSoViewData } from '@/lib/operations/view-model';
 import { formatApiDateTime } from '@/lib/operations/view-model';
 import { membershipRoleLabels, tripEventTypeLabels } from '@/lib/ui-labels';
 
-const pageSizes: ApiCuaKhauSoPageSize[] = [10, 20, 50, 100];
-const statuses: Array<{ value: ''; label: string } | { value: ApiCuaKhauSoStatus; label: string }> =
-  [
-    { value: '', label: 'Tất cả trạng thái' },
-    { value: 1, label: 'Chưa hoàn thành nghiệp vụ' },
-    { value: 2, label: 'Hoàn thành nghiệp vụ' },
-    { value: 3, label: 'Đã hủy' }
-  ];
-const directions: Array<
-  { value: ''; label: string } | { value: ApiCuaKhauSoDirection; label: string }
-> = [
-  { value: '', label: 'Nhập + Xuất' },
-  { value: 'IMPORT', label: 'Nhập khẩu' },
-  { value: 'EXPORT', label: 'Xuất khẩu' }
-];
 const cuaKhauSoConnectorRoleLabels = membershipRoles
   .filter((role) => hasOrganizationPermission(role, 'integrations:cua-khau-so:connect'))
   .map((role) => membershipRoleLabels[role])
@@ -328,7 +314,7 @@ export function CuaKhauSoClient() {
                 <SelectInput
                   label="Trạng thái"
                   value={status}
-                  options={statuses.map((item) => ({
+                  options={STATUS_FILTERS.map((item) => ({
                     value: String(item.value),
                     label: item.label
                   }))}
@@ -337,7 +323,7 @@ export function CuaKhauSoClient() {
                 <SelectInput
                   label="Luồng"
                   value={direction}
-                  options={directions.map((item) => ({
+                  options={DIRECTION_FILTERS.map((item) => ({
                     value: item.value,
                     label: item.label
                   }))}
@@ -356,7 +342,7 @@ export function CuaKhauSoClient() {
                 <SelectInput
                   label="Số dòng"
                   value={pageSize}
-                  options={pageSizes.map((size) => ({
+                  options={PAGE_SIZE_OPTIONS.map((size) => ({
                     value: String(size),
                     label: `${size} dòng`
                   }))}

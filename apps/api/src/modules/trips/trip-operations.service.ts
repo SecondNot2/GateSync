@@ -195,6 +195,35 @@ export class TripOperationsService {
     return [...trips].sort((firstTrip, secondTrip) => {
       const firstState = firstTrip.operationalState ?? this.getOperationalState(firstTrip);
       const secondState = secondTrip.operationalState ?? this.getOperationalState(secondTrip);
+      const terminalDiff =
+        Number(terminalStatuses.includes(firstTrip.currentStatus)) -
+        Number(terminalStatuses.includes(secondTrip.currentStatus));
+
+      if (terminalDiff !== 0) {
+        return terminalDiff;
+      }
+
+      const plannedStartDiff =
+        this.toSortableTime(secondTrip.plannedStartAt) -
+        this.toSortableTime(firstTrip.plannedStartAt);
+
+      if (plannedStartDiff !== 0) {
+        return plannedStartDiff;
+      }
+
+      if (
+        terminalStatuses.includes(firstTrip.currentStatus) &&
+        terminalStatuses.includes(secondTrip.currentStatus)
+      ) {
+        const completedAtDiff =
+          this.toSortableTime(firstTrip.currentStatusUpdatedAt) -
+          this.toSortableTime(secondTrip.currentStatusUpdatedAt);
+
+        if (completedAtDiff !== 0) {
+          return completedAtDiff;
+        }
+      }
+
       const priorityDiff = priorityRank[firstState.priority] - priorityRank[secondState.priority];
 
       if (priorityDiff !== 0) {
@@ -208,8 +237,8 @@ export class TripOperationsService {
       }
 
       return (
-        this.toSortableTime(firstTrip.plannedArrivalAt) -
-        this.toSortableTime(secondTrip.plannedArrivalAt)
+        this.toSortableTime(firstTrip.currentStatusUpdatedAt) -
+        this.toSortableTime(secondTrip.currentStatusUpdatedAt)
       );
     });
   }
@@ -614,7 +643,7 @@ export class TripOperationsService {
   }
 
   private toSortableTime(value: Date | string | null | undefined) {
-    return this.toDate(value)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    return this.toDate(value)?.getTime() ?? 0;
   }
 
   private toIsoString(value: Date | string) {

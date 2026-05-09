@@ -43,6 +43,7 @@ type LinkedTrip = {
   customsDeclarationId: string | null;
   vehicleId: string | null;
   driverProfileId: string | null;
+  plannedStartAt: Date | null;
   currentStatus: TripStatus;
 };
 type TripSourceAssignment = {
@@ -781,7 +782,7 @@ export class CuaKhauSoService {
         }
       });
       await this.markAccountSyncSuccess(account.id, result, finishedAt);
-      this.cache.invalidateCuaKhauSoReadModels(account.organizationId);
+      await this.cache.invalidateCuaKhauSoReadModels(account.organizationId);
 
       return {
         syncRunId: syncRun.id,
@@ -1046,7 +1047,13 @@ export class CuaKhauSoService {
         requestedTripId
       );
       const linkedTrip = linked.trip
-        ? await this.applyTripSourceAssignment(tx, linked.trip, declaration.id, assignment)
+        ? await this.applyTripSourceAssignment(
+            tx,
+            linked.trip,
+            declaration.id,
+            assignment,
+            normalizedDeclaration.submittedAt
+          )
         : undefined;
 
       await tx.integrationAccount.update({
@@ -1719,9 +1726,19 @@ export class CuaKhauSoService {
       account.organizationId,
       allDeclarationsInWindow
     );
-    const declarationsToSync = allDeclarationsInWindow.filter((declaration) =>
-      linkedExternalIds.has(declaration.externalId)
-    );
+    const selectedExternalIds = new Set<string>();
+    const declarationsToSync = allDeclarationsInWindow.filter((declaration) => {
+      if (selectedExternalIds.has(declaration.externalId)) {
+        return false;
+      }
+
+      if (!declaration.completed || linkedExternalIds.has(declaration.externalId)) {
+        selectedExternalIds.add(declaration.externalId);
+        return true;
+      }
+
+      return false;
+    });
 
     // Phase 3: Fetch details in parallel batches
     const concurrency = 5;
@@ -1742,17 +1759,11 @@ export class CuaKhauSoService {
             sourceSession,
             detailResponse.data
           );
-          const detailForSync = declaration.completed
-            ? {
-                ...enrichedDetail,
-                isFinish: true
-              }
-            : enrichedDetail;
           const result = await this.syncDeclarationDetail(
             user,
             account.organizationId,
             declaration.externalId,
-            detailForSync,
+            enrichedDetail,
             account,
             syncRunId
           );
@@ -1989,6 +2000,7 @@ export class CuaKhauSoService {
           customsDeclarationId: true,
           vehicleId: true,
           driverProfileId: true,
+          plannedStartAt: true,
           currentStatus: true
         }
       });
@@ -2015,6 +2027,7 @@ export class CuaKhauSoService {
         customsDeclarationId: true,
         vehicleId: true,
         driverProfileId: true,
+        plannedStartAt: true,
         currentStatus: true
       }
     });
@@ -2046,6 +2059,7 @@ export class CuaKhauSoService {
         customsDeclarationId: true,
         vehicleId: true,
         driverProfileId: true,
+        plannedStartAt: true,
         currentStatus: true
       }
     });
@@ -2116,6 +2130,7 @@ export class CuaKhauSoService {
         customsDeclarationId: true,
         vehicleId: true,
         driverProfileId: true,
+        plannedStartAt: true,
         currentStatus: true
       }
     });
@@ -2213,7 +2228,8 @@ export class CuaKhauSoService {
     prisma: Prisma.TransactionClient,
     trip: LinkedTrip,
     declarationId: string,
-    assignment: TripSourceAssignment
+    assignment: TripSourceAssignment,
+    submittedAt?: Date
   ): Promise<LinkedTrip> {
     const data: Prisma.TripUncheckedUpdateInput = {};
 
@@ -2229,6 +2245,10 @@ export class CuaKhauSoService {
       data.driverProfileId = assignment.driverProfileId;
     }
 
+    if (!trip.plannedStartAt && submittedAt) {
+      data.plannedStartAt = submittedAt;
+    }
+
     const updatedTrip =
       Object.keys(data).length > 0
         ? await prisma.trip.update({
@@ -2242,6 +2262,7 @@ export class CuaKhauSoService {
               customsDeclarationId: true,
               vehicleId: true,
               driverProfileId: true,
+              plannedStartAt: true,
               currentStatus: true
             }
           })
@@ -2511,7 +2532,28 @@ export class CuaKhauSoService {
       return undefined;
     }
 
-    const date = new Date(value);
+    const trimmed = value.trim();
+    const vietnameseDate = trimmed.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+    );
+
+    if (vietnameseDate) {
+      const [, day, month, year, hour = '0', minute = '0', second = '0'] = vietnameseDate;
+      const date = new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+        Number(hour),
+        Number(minute),
+        Number(second)
+      );
+
+      if (!Number.isNaN(date.getTime())) {
+        return date;
+      }
+    }
+
+    const date = new Date(trimmed);
 
     if (Number.isNaN(date.getTime())) {
       return undefined;
