@@ -423,10 +423,16 @@ export class TripsService {
       relationLoadStrategy: 'query',
       orderBy: [
         {
+          currentStatus: 'asc'
+        },
+        {
           plannedStartAt: 'desc'
         },
         {
           createdAt: 'desc'
+        },
+        {
+          id: 'asc'
         }
       ]
     };
@@ -444,10 +450,10 @@ export class TripsService {
     const filteredTrips = query.exception
       ? trips.filter((trip) => this.operations.matchesExceptionFilter(trip, query.exception!))
       : trips;
-    const sortedTrips = this.operations.sortTripsForOperations(filteredTrips);
-
     if (!query.exception) {
-      return sortedTrips.map((trip) => this.toPublicTrip(trip));
+      // Trust the DB sort order for the main list to keep cursor-based pagination consistent.
+      // We don't resort in memory here because it would break the cursor for the next page.
+      return trips.map((trip) => this.toPublicTrip(trip));
     }
 
     const cursorIndex = query.cursor
