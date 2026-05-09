@@ -5,20 +5,9 @@
     {
       "src": "apps/web/package.json",
       "use": "@vercel/next"
-    },
-    {
-      "src": "apps/api/src/index.ts",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["apps/api/src/**", "packages/**"]
-      }
     }
   ],
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "apps/api/src/index.ts"
-    },
     {
       "src": "/(.*)",
       "dest": "apps/web/$1"
