@@ -1,12 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
+import type { INestApplication } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { setupApp } from './app.setup';
 import express from 'express';
+import type { Request, Response } from 'express';
 
 const server = express();
 
-export const createServer = async (expressInstance: express.Express) => {
+export const createServer = async (expressInstance: express.Express): Promise<INestApplication> => {
   const app = await NestFactory.create(
     AppModule,
     new ExpressAdapter(expressInstance),
@@ -16,9 +18,9 @@ export const createServer = async (expressInstance: express.Express) => {
   return app;
 };
 
-let cachedApp: any;
+let cachedApp: INestApplication;
 
-export default async (req: any, res: any) => {
+export default async (req: Request, res: Response) => {
   if (!cachedApp) {
     cachedApp = await createServer(server);
   }
