@@ -272,21 +272,9 @@ export function TripsClient({
       }
 
       if (result.trips.length > 0) {
-        // Filter out any duplicates before adding to state
-        const existingIds = new Set(allTrips.map((t) => t.id));
-        const newTrips = result.trips.filter((t) => !existingIds.has(t.id));
-
-        if (newTrips.length === 0 && result.trips.length > 0) {
-          // If all items returned were duplicates, it means the cursor logic is stuck
-          // or we've reached the end but the count matched pageSize exactly.
-          setHasMore(false);
-          return;
-        }
-
-        setAdditionalTrips((current) => [...current, ...newTrips]);
+        setAdditionalTrips((current) => [...current, ...result.trips]);
       }
-    } catch (err) {
-      console.error('Infinity scroll error:', err);
+    } catch {
       setHasMore(false);
     } finally {
       setIsLoadingMore(false);
