@@ -4,6 +4,7 @@
   "private": true,
   "packageManager": "pnpm@9.15.4",
   "scripts": {
+    "postinstall": "pnpm db:generate",
     "dev": "pnpm --stream --parallel --filter @gatesync/web --filter @gatesync/api dev",
     "dev:web": "pnpm --filter @gatesync/web dev",
     "dev:api": "pnpm --filter @gatesync/api dev",
