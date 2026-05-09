@@ -419,12 +419,13 @@ export type AdminViewData = {
   notice?: string;
 };
 
-const dateTimeFormatter = new Intl.DateTimeFormat('vi-VN', {
+const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
   month: '2-digit',
   year: 'numeric',
   hour: '2-digit',
-  minute: '2-digit'
+  minute: '2-digit',
+  hour12: false
 });
 const numberFormatter = new Intl.NumberFormat('vi-VN');
 const currencyFormatter = new Intl.NumberFormat('vi-VN', {

@@ -521,6 +521,7 @@ export function TripsClient({
                   <FilterSummary
                     label="Khoảng ngày"
                     value={formatDateRange(filters.from, filters.to)}
+                    suppressHydrationWarning
                   />
                 </div>
               </details>
@@ -687,7 +688,9 @@ function TripsList({
               <p className="text-xs font-semibold text-amber-700">
                 {formatDelay(trip.delayMinutes)}
               </p>
-              <p className="text-xs text-slate-500">Cập nhật trạng thái: {trip.statusUpdatedAt}</p>
+              <p className="text-xs text-slate-500" suppressHydrationWarning>
+                Cập nhật trạng thái: {trip.statusUpdatedAt}
+              </p>
             </div>
             <div className="space-y-2">
               <PriorityBadge priority={trip.priority} />
@@ -730,6 +733,7 @@ function DeclarationSignal({
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-bold text-slate-950">{signal.number}</span>
         <span
+          suppressHydrationWarning
           className={`rounded-full px-2 py-0.5 text-[0.68rem] font-bold ${
             signal.stale ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
           }`}
@@ -807,11 +811,21 @@ function QuickFilterLinks({ filters }: { filters: ListTripsParams }) {
   );
 }
 
-function FilterSummary({ label, value }: { label: string; value: string }) {
+function FilterSummary({
+  label,
+  value,
+  suppressHydrationWarning
+}: {
+  label: string;
+  value: string;
+  suppressHydrationWarning?: boolean;
+}) {
   return (
     <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</p>
-      <p className="mt-2 text-sm font-semibold text-slate-800">{value}</p>
+      <p className="mt-2 text-sm font-semibold text-slate-800" suppressHydrationWarning={suppressHydrationWarning}>
+        {value}
+      </p>
     </div>
   );
 }
