@@ -29,8 +29,6 @@ import {
 import type { TripsViewData } from '@/lib/operations/view-model';
 import {
   formatDelay,
-  tripDirectionLabels,
-  tripEventTypeLabels,
   tripExceptionFilterLabels,
   tripStatusLabels,
   tripTypeLabels

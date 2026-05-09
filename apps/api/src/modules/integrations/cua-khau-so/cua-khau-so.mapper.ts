@@ -229,13 +229,13 @@ export class CuaKhauSoMapper {
       {
         step: 6,
         label: procedureStepLabels[5],
-        done: Boolean(detail.confirmFinish),
-        status: detail.confirmFinish
+        done: this.isBusinessCompleted(detail),
+        status: this.isBusinessCompleted(detail)
           ? 'DONE'
           : this.isTaxPaid(detail.paymentOfTax)
             ? 'WAITING_AUTHORITY'
             : 'PENDING',
-        description: detail.confirmFinish
+        description: this.isBusinessCompleted(detail)
           ? 'Cửa khẩu số đã xác nhận hoàn tất.'
           : this.isTaxPaid(detail.paymentOfTax)
             ? 'Thuế đã thanh toán, hồ sơ doanh nghiệp đã hoàn tất; đang chờ xác nhận công quyền.'
@@ -398,7 +398,7 @@ export class CuaKhauSoMapper {
       );
     }
 
-    if (detail.confirmFinish) {
+    if (detail.isFinish) {
       this.addCandidate(
         candidates,
         organizationId,
@@ -964,7 +964,19 @@ export class CuaKhauSoMapper {
   }
 
   private isBusinessCompleted(declaration: CuaKhauSoDeclarationLite) {
-    return Boolean(declaration.confirmFinish || this.isTaxPaid(declaration.paymentOfTax));
+    if (declaration.isFinish) {
+      return true;
+    }
+
+    if (declaration.type === 0 && declaration.checkAllConfirmOutVN) {
+      return true;
+    }
+
+    if (declaration.type === 1 && declaration.checkAllConfirmOutTQ) {
+      return true;
+    }
+
+    return false;
   }
 
   private isTaxPaid(payment: CuaKhauSoPaymentInfo | null | undefined) {

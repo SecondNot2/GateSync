@@ -1142,6 +1142,12 @@ export class CuaKhauSoService {
         syncBase.linkedTrip.id,
         normalizedDeclaration.approvedAt ?? syncedAt
       );
+    } else if (
+      syncBase.linkedTrip &&
+      normalizedDeclaration.status !== 'APPROVED' &&
+      syncBase.linkedTrip.currentStatus === 'COMPLETED'
+    ) {
+      await this.reopenTripFromDeclaration(organizationId, syncBase.linkedTrip.id);
     }
 
     if (syncBase.linkedTrip) {
@@ -1164,6 +1170,34 @@ export class CuaKhauSoService {
       skippedEvents,
       lastSyncAt: syncedAt.toISOString()
     };
+  }
+
+  private async reopenTripFromDeclaration(organizationId: string, tripId: string) {
+    await this.prisma.trip.updateMany({
+      where: {
+        id: tripId,
+        organizationId,
+        deletedAt: null,
+        currentStatus: 'COMPLETED'
+      },
+      data: {
+        currentStatus: 'IN_PROGRESS',
+        currentStatusUpdatedAt: new Date()
+      }
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        organizationId,
+        actorUserId: null,
+        action: 'integration.cua_khau_so.reopen_trip',
+        entityType: 'Trip',
+        entityId: tripId,
+        after: {
+          reason: 'Tờ khai Cửa khẩu số chưa hoàn thành (mở lại từ trạng thái COMPLETED).'
+        }
+      }
+    });
   }
 
   private async markTripCompletedFromDeclaration(
@@ -1347,20 +1381,21 @@ export class CuaKhauSoService {
         ...(query.direction ? { direction: query.direction } : {})
       });
       const mapped = this.mapper.mapListResponse(response);
+      const mappedDeclarations = this.withExternalListStatus(externalStatus, mapped.declarations);
       sourceMessage = mapped.message;
 
-      if (mapped.declarations.length === 0) {
+      if (mappedDeclarations.length === 0) {
         break;
       }
 
       filtered.push(
-        ...mapped.declarations.filter((declaration) =>
+        ...mappedDeclarations.filter((declaration) =>
           this.matchesDeclarationListFilters(declaration, query, from, to)
         )
       );
 
       if (
-        this.shouldStopScanningByFromDate(mapped.declarations, from) ||
+        this.shouldStopScanningByFromDate(mappedDeclarations, from) ||
         mapped.totalPage <= sourcePage
       ) {
         break;
@@ -1634,45 +1669,48 @@ export class CuaKhauSoService {
     // Phase 1: Scan list pages and update mirror summaries (fast, no detail fetch)
     const allDeclarationsInWindow: CuaKhauSoDeclarationSummary[] = [];
 
-    for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
-      const response = await this.client.getDeclarations(sourceSession, {
-        pageNumber,
-        pageSize,
-        status: 1
-      });
-      const mapped = this.mapper.mapListResponse(response);
-      const declarationsInWindow = mapped.declarations.filter((declaration) =>
-        this.matchesAutoSyncWindow(declaration, from)
-      );
-      const observedCandidates = mapped.declarations
-        .map((declaration) => this.parseDate(declaration.createdAt))
-        .filter((value): value is Date => value !== undefined);
-      recordsFetched += mapped.declarations.length;
-
-      if (observedCandidates.length > 0) {
-        const pageLatestObservedAt = new Date(
-          Math.max(...observedCandidates.map((date) => date.getTime()))
+    for (const status of [1, 2] as const) {
+      for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
+        const response = await this.client.getDeclarations(sourceSession, {
+          pageNumber,
+          pageSize,
+          status
+        });
+        const mapped = this.mapper.mapListResponse(response);
+        const mappedDeclarations = this.withExternalListStatus(status, mapped.declarations);
+        const declarationsInWindow = mappedDeclarations.filter((declaration) =>
+          this.matchesSyncDetailWindow(declaration, from)
         );
+        const observedCandidates = mappedDeclarations
+          .map((declaration) => this.parseDate(declaration.createdAt))
+          .filter((value): value is Date => value !== undefined);
+        recordsFetched += mappedDeclarations.length;
 
-        lastObservedAt =
-          !lastObservedAt || pageLatestObservedAt > lastObservedAt
-            ? pageLatestObservedAt
-            : lastObservedAt;
-      }
+        if (observedCandidates.length > 0) {
+          const pageLatestObservedAt = new Date(
+            Math.max(...observedCandidates.map((date) => date.getTime()))
+          );
 
-      await this.markSourceListScanned(account.id, account.organizationId, mapped.declarations);
+          lastObservedAt =
+            !lastObservedAt || pageLatestObservedAt > lastObservedAt
+              ? pageLatestObservedAt
+              : lastObservedAt;
+        }
 
-      if (mapped.declarations.length === 0) {
-        break;
-      }
+        await this.markSourceListScanned(account.id, account.organizationId, mappedDeclarations);
 
-      allDeclarationsInWindow.push(...declarationsInWindow);
+        if (mappedDeclarations.length === 0) {
+          break;
+        }
 
-      if (
-        this.shouldStopScanningByFromDate(mapped.declarations, from) ||
-        mapped.totalPage <= pageNumber
-      ) {
-        break;
+        allDeclarationsInWindow.push(...declarationsInWindow);
+
+        if (
+          this.shouldStopScanningByFromDate(mappedDeclarations, from) ||
+          mapped.totalPage <= pageNumber
+        ) {
+          break;
+        }
       }
     }
 
@@ -1681,8 +1719,8 @@ export class CuaKhauSoService {
       account.organizationId,
       allDeclarationsInWindow
     );
-    const declarationsToSync = allDeclarationsInWindow.filter(
-      (declaration) => linkedExternalIds.has(declaration.externalId)
+    const declarationsToSync = allDeclarationsInWindow.filter((declaration) =>
+      linkedExternalIds.has(declaration.externalId)
     );
 
     // Phase 3: Fetch details in parallel batches
@@ -1704,11 +1742,17 @@ export class CuaKhauSoService {
             sourceSession,
             detailResponse.data
           );
+          const detailForSync = declaration.completed
+            ? {
+                ...enrichedDetail,
+                isFinish: true
+              }
+            : enrichedDetail;
           const result = await this.syncDeclarationDetail(
             user,
             account.organizationId,
             declaration.externalId,
-            enrichedDetail,
+            detailForSync,
             account,
             syncRunId
           );
@@ -1743,8 +1787,7 @@ export class CuaKhauSoService {
       sourceSession,
       account,
       user,
-      syncRunId,
-      from
+      syncRunId
     );
     detailsFetched += reconciled.detailsFetched;
     eventsCreated += reconciled.eventsCreated;
@@ -1788,7 +1831,7 @@ export class CuaKhauSoService {
           some: {
             deletedAt: null,
             currentStatus: {
-              notIn: [...terminalTripStatuses]
+              notIn: ['CANCELLED']
             }
           }
         }
@@ -1796,19 +1839,14 @@ export class CuaKhauSoService {
       select: { sourceExternalId: true }
     });
 
-    return new Set(
-      linked
-        .map((d) => d.sourceExternalId)
-        .filter((id): id is string => id !== null)
-    );
+    return new Set(linked.map((d) => d.sourceExternalId).filter((id): id is string => id !== null));
   }
 
   private async reconcileCompletedDeclarations(
     sourceSession: ReturnType<CuaKhauSoService['withSessionExpiry']>,
     account: Pick<IntegrationAccount, 'id' | 'organizationId'>,
     user: RequestUser | undefined,
-    syncRunId: string | undefined,
-    from: Date
+    syncRunId: string | undefined
   ) {
     let detailsFetched = 0;
     let eventsCreated = 0;
@@ -1832,7 +1870,7 @@ export class CuaKhauSoService {
           some: {
             deletedAt: null,
             currentStatus: {
-              notIn: [...terminalTripStatuses]
+              notIn: ['CANCELLED']
             }
           }
         }
@@ -2292,6 +2330,46 @@ export class CuaKhauSoService {
     return !declaration.completed && this.isWithinDateWindow(declaration, from, undefined);
   }
 
+  private matchesSyncDetailWindow(declaration: CuaKhauSoDeclarationSummary, from: Date) {
+    return this.isWithinDateWindow(declaration, from, undefined);
+  }
+
+  private withExternalListStatus(
+    status: CuaKhauSoListStatus | undefined,
+    declarations: CuaKhauSoDeclarationSummary[]
+  ): CuaKhauSoDeclarationSummary[] {
+    if (!status) {
+      return declarations;
+    }
+
+    return declarations.map((declaration) => {
+      if (status === 2) {
+        return {
+          ...declaration,
+          status: 'APPROVED',
+          statusLabel: 'Hoàn thành',
+          completed: true
+        };
+      }
+
+      if (status === 3) {
+        return {
+          ...declaration,
+          status: 'CANCELLED',
+          statusLabel: 'Đã hủy',
+          completed: false
+        };
+      }
+
+      return {
+        ...declaration,
+        status: 'SUBMITTED',
+        statusLabel: 'Chưa hoàn thành',
+        completed: false
+      };
+    });
+  }
+
   private isWithinDateWindow(
     declaration: CuaKhauSoDeclarationSummary,
     from: Date | undefined,
@@ -2329,7 +2407,7 @@ export class CuaKhauSoService {
   }
 
   private toExternalListStatus(status: CuaKhauSoListStatus | undefined) {
-    return status === 2 ? undefined : status;
+    return status;
   }
 
   private resolveSourceUpdatedAt(detail: CuaKhauSoDeclarationDetail, fallback: Date) {

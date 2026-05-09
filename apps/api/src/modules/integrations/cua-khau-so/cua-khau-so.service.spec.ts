@@ -330,6 +330,9 @@ test('syncDeclaration upserts a CustomsDeclaration and records idempotent TripEv
         count: 1
       })
     },
+    auditLog: {
+      create: async () => ({ id: 'audit-root-1' })
+    },
     integrationAccount: {
       upsert: async () => ({
         id: 'account-1'
@@ -460,6 +463,9 @@ test('syncDeclaration creates a GateSync Trip when no matching trip exists', asy
       updateMany: async () => ({
         count: 1
       })
+    },
+    auditLog: {
+      create: async () => ({ id: 'audit-root-1' })
     },
     integrationAccount: {
       upsert: async () => ({

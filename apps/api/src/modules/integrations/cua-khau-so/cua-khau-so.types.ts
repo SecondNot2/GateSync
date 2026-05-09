@@ -47,7 +47,10 @@ export type CuaKhauSoDeclarationLite = {
   createDate?: string | null;
   type?: 0 | 1 | number | null;
   gate?: CuaKhauSoGateInfo | null;
+  isFinish?: boolean | null;
   confirmFinish?: boolean | null;
+  checkAllConfirmOutVN?: boolean | null;
+  checkAllConfirmOutTQ?: boolean | null;
   companyGoodsName?: string | null;
   licencePlateVNTQ?: string | null;
   numberOfTrailer?: string | null;
