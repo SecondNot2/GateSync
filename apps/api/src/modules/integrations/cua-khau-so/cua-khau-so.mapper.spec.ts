@@ -33,7 +33,18 @@ test('CuaKhauSoMapper maps real fixture into declaration detail, steps and event
   assert.equal(mapped.procedureSteps[1]?.done, true);
   assert.equal(mapped.vehicles[0]?.borderGuardConfirmed, true);
   assert.equal(mapped.vehicles[0]?.customsArrivalConfirmed, true);
+  assert.equal(mapped.vehicles[0]?.selfWeight, 8045);
+  assert.equal(mapped.vehicles[0]?.unloadingPlace, 'Bãi Xuân Cương');
+  assert.equal(
+    mapped.vehicles.every((vehicle) => vehicle.nationality === 'CN'),
+    true
+  );
+  assert.equal(
+    mapped.vehicles.some((vehicle) => vehicle.plateNumber === '29E07714'),
+    false
+  );
   assert.equal(mapped.transshipmentVehicles.length, 2);
+  assert.equal(mapped.transshipmentVehicles[0]?.driverIdentityNumber, '.');
   assert.equal(
     mapped.transshipmentVehicles[0]?.vehicleRegistrationFormId,
     'bcbad4b8-9378-4eba-beb9-bf853ef5258a'
@@ -169,7 +180,9 @@ test('CuaKhauSoMapper requires license and VN transshipment vehicle BP/HQ times 
             emptyVehicleEnteredGateTime: '2026-05-03T13:23:21.972699',
             emptyVehicleEnteredGateCustomsTime: '2026-05-03T13:24:21.972699',
             checkChangeVehicle: true,
-            checkChangeVehicleTime: '2026-05-03T13:25:21.972699'
+            checkChangeVehicleTime: '2026-05-03T13:25:21.972699',
+            confirmOutOfParkinglotTimeByBorderGate: '2026-05-03T13:26:21.972699',
+            checkChangeVehicleOutGateCustomVNTime: '2026-05-03T13:27:21.972699'
           }
         ]
       }
@@ -186,6 +199,8 @@ test('CuaKhauSoMapper requires license and VN transshipment vehicle BP/HQ times 
   );
   assert.equal(mapped.transshipmentVehicles[0]?.borderGuardEntered, true);
   assert.equal(mapped.transshipmentVehicles[0]?.customsEntered, true);
+  assert.equal(mapped.transshipmentVehicles[0]?.borderGuardOutAt, '2026-05-03T06:26:21.972Z');
+  assert.equal(mapped.transshipmentVehicles[0]?.customsOutAt, '2026-05-03T06:27:21.972Z');
 });
 
 test('CuaKhauSoMapper maps export declaration with correct direction and completion', () => {

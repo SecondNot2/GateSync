@@ -514,6 +514,27 @@ function CuaKhauSoDeclarationSection({
 }: {
   declaration: NonNullable<TripDetailViewData['trip']['cuaKhauSoDeclaration']>;
 }) {
+  const [selectedVehicle, setSelectedVehicle] = useState<
+    (typeof declaration.vehicles)[number] | null
+  >(null);
+  const [selectedTransshipmentVehicle, setSelectedTransshipmentVehicle] = useState<
+    (typeof declaration.transshipmentVehicles)[number] | null
+  >(null);
+  const isDetailModalOpen = Boolean(selectedVehicle || selectedTransshipmentVehicle);
+
+  useEffect(() => {
+    if (!isDetailModalOpen) {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isDetailModalOpen]);
+
   return (
     <section className="rounded-[1.75rem] border border-sky-100 bg-white/95 p-4 shadow-soft sm:p-5">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -525,12 +546,11 @@ function CuaKhauSoDeclarationSection({
             Tờ khai {declaration.summary.number}
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            GateSync hiển thị dữ liệu chuẩn hóa đã ingested từ Cửa khẩu số. Không hiển thị raw
-            payload và không gọi trực tiếp hệ thống nguồn từ trang chi tiết chuyến.
+            Dữ liệu chuẩn hóa từ Cửa khẩu số, không hiển thị raw payload.
           </p>
         </div>
         <div
-          className={`rounded-3xl border px-4 py-3 text-sm ${
+          className={`rounded-2xl border px-4 py-3 text-sm ${
             declaration.freshness.stale
               ? 'border-amber-100 bg-amber-50 text-amber-800'
               : 'border-emerald-100 bg-emerald-50 text-emerald-800'
@@ -564,7 +584,8 @@ function CuaKhauSoDeclarationSection({
         />
       </div>
 
-      <div
+      <details
+        open={!declaration.transshipment.eligible || !declaration.transshipment.signed}
         className={`mt-5 rounded-3xl border p-4 ${
           declaration.transshipment.eligible
             ? 'border-emerald-100 bg-emerald-50 text-emerald-900'
@@ -573,7 +594,9 @@ function CuaKhauSoDeclarationSection({
               : 'border-slate-100 bg-slate-50 text-slate-700'
         }`}
       >
-        <p className="text-sm font-bold text-slate-950">Điều kiện ký sang tải</p>
+        <summary className="cursor-pointer list-none text-sm font-bold text-slate-950">
+          Điều kiện ký sang tải · {declaration.transshipment.statusLabel}
+        </summary>
         <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
           <StatusRow
             label="Mục 9 - giấy phép"
@@ -606,7 +629,7 @@ function CuaKhauSoDeclarationSection({
             active={declaration.transshipment.vietnamVehicleEntered}
           />
         </div>
-      </div>
+      </details>
 
       <div className="mt-5 grid gap-3 xl:grid-cols-[1fr_0.9fr]">
         <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
@@ -646,35 +669,33 @@ function CuaKhauSoDeclarationSection({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 xl:grid-cols-[0.8fr_1fr]">
-        <div className="rounded-3xl border border-slate-100 bg-white p-4">
-          <p className="text-sm font-bold text-slate-950">Bước thủ tục</p>
-          <div className="mt-3 space-y-2">
-            {declaration.procedureSteps.length > 0 ? (
-              declaration.procedureSteps.map((step) => (
-                <StatusRow
-                  key={`${step.step}-${step.label}`}
-                  label={`${step.step}. ${step.label}`}
-                  value={`${step.status} · ${step.occurredAt}`}
-                  active={step.done}
-                />
-              ))
-            ) : (
-              <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
-                Chưa có bước thủ tục từ bản sao Cửa khẩu số.
-              </p>
-            )}
-          </div>
+      <div className="mt-5 rounded-3xl border border-slate-100 bg-white p-4">
+        <p className="text-sm font-bold text-slate-950">Bước thủ tục</p>
+        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {declaration.procedureSteps.length > 0 ? (
+            declaration.procedureSteps.map((step) => (
+              <StatusRow
+                key={`${step.step}-${step.label}`}
+                label={`${step.step}. ${step.label}`}
+                value={`${step.status} · ${step.occurredAt}`}
+                active={step.done}
+              />
+            ))
+          ) : (
+            <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
+              Chưa có bước thủ tục từ bản sao Cửa khẩu số.
+            </p>
+          )}
         </div>
       </div>
 
       <CksDataTable
         title="Thông tin hàng hóa đại diện"
         emptyText="Chưa có hàng hóa đại diện từ Cửa khẩu số."
-        headers={['STT', 'Tên hàng', 'HS', 'Khối lượng', 'Giá trị hàng hóa']}
+        headers={['STT', 'Tên hàng', 'Khối lượng', 'Giá trị hàng hóa']}
         rows={declaration.representativeGoods.map((item, index) => ({
           key: item.id,
-          cells: [index + 1, item.name, item.hsCode, item.weight, item.priceVnd]
+          cells: [index + 1, item.name, item.weight, item.priceVnd]
         }))}
       />
 
@@ -707,12 +728,8 @@ function CuaKhauSoDeclarationSection({
           'Số điện thoại',
           'Trạng thái',
           'Biển số sang tải',
-          'Biển số xe chuyên trách',
           'Nhóm hàng hóa',
-          'Ghi chú',
-          'Giấy phép vận tải quốc tế',
-          'Vào BP',
-          'Vào HQ'
+          'Chi tiết'
         ]}
         rows={declaration.vehicles.map((vehicle, index) => ({
           key: vehicle.id,
@@ -726,12 +743,15 @@ function CuaKhauSoDeclarationSection({
             vehicle.phoneNumber,
             vehicle.statusLabel,
             vehicle.transshipmentPlateNumber,
-            vehicle.responsiblePlateNumber,
             vehicle.goodsGroup,
-            vehicle.note,
-            vehicle.transportLicenseNumber,
-            vehicle.borderGuardAt,
-            vehicle.customsArrivalAt
+            <button
+              key="detail"
+              type="button"
+              onClick={() => setSelectedVehicle(vehicle)}
+              className="rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700 transition hover:bg-sky-100"
+            >
+              Xem
+            </button>
           ]
         }))}
       />
@@ -742,19 +762,16 @@ function CuaKhauSoDeclarationSection({
           emptyText="Không có xe nhận sang tải."
           headers={[
             'STT',
-            'Biển số xe',
-            'Biển số sang tải',
-            'Loại phương tiện',
+            'Biển số xe TQ',
+            'Xe nhận sang tải',
             'Số Container',
             'Số Mooc',
+            'Loại phương tiện',
             'Lái xe',
-            'Phí 01',
-            'Địa điểm sang tải',
+            'Điểm sang tải',
             'Tờ khai Hải Quan',
             'Trạng thái',
-            'Ghi chú',
-            'Vào BP',
-            'Vào HQ'
+            'Chi tiết'
           ]}
           rows={declaration.transshipmentVehicles.map((vehicle, index) => ({
             key: vehicle.id,
@@ -762,17 +779,21 @@ function CuaKhauSoDeclarationSection({
               index + 1,
               vehicle.sourcePlateNumber,
               vehicle.plateNumber,
-              vehicle.vehicleType,
               vehicle.containerNumber,
               vehicle.trailerNumber,
+              vehicle.vehicleType,
               vehicle.driverName,
-              vehicle.price,
               vehicle.areaChange,
               vehicle.customsDeclarationNumbers,
               vehicle.statusLabel,
-              vehicle.note,
-              vehicle.borderGuardEnteredAt,
-              vehicle.customsEnteredAt
+              <button
+                key="detail"
+                type="button"
+                onClick={() => setSelectedTransshipmentVehicle(vehicle)}
+                className="rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700 transition hover:bg-sky-100"
+              >
+                Xem
+              </button>
             ]
           }))}
         />
@@ -803,6 +824,52 @@ function CuaKhauSoDeclarationSection({
           )}
         </div>
       </details>
+
+      {selectedVehicle ? (
+        <DetailModal
+          title={`Chi tiết phương tiện ${selectedVehicle.plateNumber}`}
+          subtitle="Dữ liệu phương tiện nguồn từ tờ khai Cửa khẩu số"
+          onClose={() => setSelectedVehicle(null)}
+          items={[
+            { label: 'Biển số xe chuyên trách', value: selectedVehicle.responsiblePlateNumber },
+            { label: 'Giấy phép vận tải quốc tế', value: selectedVehicle.transportLicenseNumber },
+            { label: 'Tự trọng (Kilogam)', value: selectedVehicle.selfWeight },
+            { label: 'Tổng trọng lượng hàng hóa (Kilogam)', value: selectedVehicle.weight },
+            { label: 'Địa điểm dỡ hàng', value: selectedVehicle.unloadingPlace },
+            { label: 'Giờ vào BP', value: selectedVehicle.borderGuardAt },
+            { label: 'Giờ vào HQ', value: selectedVehicle.customsArrivalAt },
+            { label: 'Giờ ra BP', value: selectedVehicle.outParkingBorderGuardAt },
+            { label: 'Giờ ra HQ', value: selectedVehicle.outParkingCustomsAt },
+            { label: 'Vào bãi', value: selectedVehicle.inParkingAt },
+            { label: 'Xác nhận GPLV', value: selectedVehicle.transportLicenseConfirmedAt },
+            { label: 'Xử lý hải quan', value: selectedVehicle.customsProcessingAt },
+            { label: 'Ghi chú', value: selectedVehicle.note }
+          ]}
+        />
+      ) : null}
+
+      {selectedTransshipmentVehicle ? (
+        <DetailModal
+          title={`Chi tiết xe nhận sang tải ${selectedTransshipmentVehicle.plateNumber}`}
+          subtitle="Dữ liệu xe nhận sang tải từ Cửa khẩu số"
+          onClose={() => setSelectedTransshipmentVehicle(null)}
+          items={[
+            {
+              label: 'Số CMND/CCCD/GPLX',
+              value: selectedTransshipmentVehicle.driverIdentityNumber
+            },
+            { label: 'Điểm sang tải', value: selectedTransshipmentVehicle.areaChange },
+            { label: 'Mức phí', value: selectedTransshipmentVehicle.feeRate },
+            { label: 'Giờ vào BP', value: selectedTransshipmentVehicle.borderGuardEnteredAt },
+            { label: 'Giờ vào HQ', value: selectedTransshipmentVehicle.customsEnteredAt },
+            { label: 'Giờ ra BP', value: selectedTransshipmentVehicle.borderGuardOutAt },
+            { label: 'Giờ ra HQ', value: selectedTransshipmentVehicle.customsOutAt },
+            { label: 'Xác nhận sang tải', value: selectedTransshipmentVehicle.changeConfirmedAt },
+            { label: 'Kiểm dịch y tế', value: selectedTransshipmentVehicle.medicalQuarantineAt },
+            { label: 'Ghi chú', value: selectedTransshipmentVehicle.note }
+          ]}
+        />
+      ) : null}
     </section>
   );
 }
@@ -818,22 +885,24 @@ function CksDataTable({
   headers: string[];
   rows: Array<{
     key: string;
-    cells: Array<string | number>;
+    cells: ReactNode[];
   }>;
 }) {
   return (
     <div className="mt-5 overflow-hidden rounded-3xl border border-slate-100 bg-white">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3">
+      <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
         <p className="text-sm font-bold text-sky-700">{title}</p>
-        <p className="text-xs font-semibold text-slate-400">{rows.length} dòng</p>
       </div>
       {rows.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-separate border-spacing-0 text-left text-xs">
+        <div>
+          <table className="w-full table-fixed border-separate border-spacing-0 text-left text-xs">
             <thead>
               <tr className="bg-slate-100 text-[0.68rem] font-bold uppercase tracking-[0.08em] text-slate-500">
                 {headers.map((header) => (
-                  <th key={header} className="whitespace-nowrap px-3 py-2 first:pl-4 last:pr-4">
+                  <th
+                    key={header}
+                    className="break-words px-2 py-2 align-bottom leading-4 first:pl-4 last:pr-4"
+                  >
                     {header}
                   </th>
                 ))}
@@ -845,7 +914,7 @@ function CksDataTable({
                   {row.cells.map((cell, index) => (
                     <td
                       key={`${row.key}-${headers[index] ?? index}`}
-                      className="max-w-[18rem] border-b border-slate-100 px-3 py-3 align-top text-slate-700 first:pl-4 last:pr-4"
+                      className="break-words border-b border-slate-100 px-2 py-3 align-top leading-5 text-slate-700 first:pl-4 last:pr-4"
                     >
                       <span className={index === 1 ? 'font-bold text-slate-950' : ''}>{cell}</span>
                     </td>
@@ -858,6 +927,61 @@ function CksDataTable({
       ) : (
         <p className="px-4 py-5 text-sm text-slate-500">{emptyText}</p>
       )}
+    </div>
+  );
+}
+
+function DetailModal({
+  title,
+  subtitle,
+  items,
+  onClose
+}: {
+  title: string;
+  subtitle: string;
+  items: Array<{ label: string; value: string }>;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-slate-950/40 p-3 sm:items-center sm:justify-center"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="w-full rounded-[1.75rem] bg-white p-4 shadow-2xl sm:max-w-5xl sm:p-5"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+              Chi tiết CKS
+            </p>
+            <h3 className="mt-2 text-xl font-bold text-slate-950">{title}</h3>
+            <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-200 px-3 py-1 text-sm font-bold text-slate-600 transition hover:border-sky-200 hover:text-sky-700"
+          >
+            Đóng
+          </button>
+        </div>
+        <dl className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((item) => (
+            <div key={item.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                {item.label}
+              </dt>
+              <dd className="mt-1 break-words text-sm font-semibold text-slate-800">
+                {item.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
     </div>
   );
 }

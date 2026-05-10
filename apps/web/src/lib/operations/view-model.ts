@@ -231,8 +231,10 @@ export type OperationsCuaKhauSoDeclaration = {
     note: string;
     transportLicenseNumber: string;
     weight: string;
+    selfWeight: string;
     price: string;
     feeRate: string;
+    unloadingPlace: string;
     borderGuardConfirmed: boolean;
     customsArrivalConfirmed: boolean;
     inParkingConfirmed: boolean;
@@ -258,6 +260,7 @@ export type OperationsCuaKhauSoDeclaration = {
     statusLabel: string;
     note: string;
     weight: string;
+    driverIdentityNumber: string;
     price: string;
     feeRate: string;
     vehicleRegistrationFormId: string;
@@ -269,6 +272,7 @@ export type OperationsCuaKhauSoDeclaration = {
     borderGuardEnteredAt: string;
     customsEnteredAt: string;
     changeConfirmedAt: string;
+    borderGuardOutAt: string;
     customsOutAt: string;
     medicalQuarantineAt: string;
   }>;
@@ -745,11 +749,14 @@ export function toTripSummaryView(trip: ApiTripSummary): OperationsTripSummary {
 
   if (declaration) {
     if (declaration.goods && Array.isArray(declaration.goods)) {
+      const customsDeclarationGoods = declaration.goods.filter((group) =>
+        isKnownCuaKhauSoDeclarationNumber(group.declarationNumber)
+      );
       summary.companies = Array.from(
-        new Set(declaration.goods.map((g) => g.companyName).filter(Boolean))
+        new Set(customsDeclarationGoods.map((g) => g.companyName).filter(Boolean))
       );
       summary.customsDeclarationsCount = new Set(
-        declaration.goods.map((g) => g.declarationNumber).filter(Boolean)
+        customsDeclarationGoods.map((g) => g.declarationNumber).filter(Boolean)
       ).size;
     } else if (declaration.companyGoodsName) {
       summary.companies = [declaration.companyGoodsName];
@@ -764,7 +771,9 @@ export function toTripSummaryView(trip: ApiTripSummary): OperationsTripSummary {
       Array.isArray(declaration.vehicles) &&
       declaration.vehicles.length > 0
     ) {
-      const v = declaration.vehicles[0];
+      const v =
+        declaration.vehicles.find((vehicle) => vehicle.nationality?.toUpperCase() === 'CN') ??
+        declaration.vehicles[0];
       if (v?.trailerNumber && !isPlaceholder(v.trailerNumber)) {
         summary.trailerNumber = v.trailerNumber;
       } else if (!summary.trailerNumber && v?.trailerNumber) {
@@ -894,6 +903,9 @@ function toCuaKhauSoDeclarationView(
     return undefined;
   }
 
+  const paymentStatus = declaration.paymentStatus ?? 'Chưa có thông tin phí';
+  const paymentPaid = paymentStatus === 'Đã thanh toán';
+
   return {
     summary: {
       externalId: declaration.externalId ?? declaration.declarationNumber,
@@ -925,20 +937,20 @@ function toCuaKhauSoDeclarationView(
       {
         label: 'Trạng thái thanh toán',
         amount: 'Theo dữ liệu nguồn',
-        status: declaration.paymentStatus ?? 'Chưa có thông tin phí',
-        paid: declaration.completed ?? false
+        status: paymentStatus,
+        paid: paymentPaid
       },
       {
         label: 'Phí hạ tầng',
         amount: formatCurrency(declaration.infrastructureCharges),
         status: declaration.infrastructureCharges ? 'Có ghi nhận' : 'Chưa có dữ liệu',
-        paid: declaration.completed ?? false
+        paid: paymentPaid
       },
       {
         label: 'Phí sang tải',
         amount: formatCurrency(declaration.transferCharges),
         status: declaration.transferCharges ? 'Có ghi nhận' : 'Chưa có dữ liệu',
-        paid: declaration.transshipment?.signed ?? false
+        paid: paymentPaid && Boolean(declaration.transferCharges)
       }
     ],
     checks: toCuaKhauSoChecks(declaration),
@@ -952,13 +964,15 @@ function toCuaKhauSoDeclarationView(
         priceVnd: formatCurrency(item.priceVnd)
       }))
     ),
-    customsDeclarations: (declaration.goods ?? []).map((group, index) => ({
-      id: group.id ?? `customs-declaration-${index}`,
-      companyName: group.companyName,
-      companyTaxCode: group.companyTaxCode,
-      declarationNumber: group.declarationNumber,
-      declarationType: group.declarationType
-    })),
+    customsDeclarations: (declaration.goods ?? [])
+      .filter((group) => isKnownCuaKhauSoDeclarationNumber(group.declarationNumber))
+      .map((group, index) => ({
+        id: group.id ?? `customs-declaration-${index}`,
+        companyName: group.companyName,
+        companyTaxCode: group.companyTaxCode,
+        declarationNumber: group.declarationNumber,
+        declarationType: group.declarationType
+      })),
     goods: (declaration.goods ?? []).map((group, index) => ({
       id: group.id ?? `goods-${index}`,
       companyName: group.companyName,
@@ -973,36 +987,40 @@ function toCuaKhauSoDeclarationView(
         priceVnd: formatCurrency(item.priceVnd)
       }))
     })),
-    vehicles: (declaration.vehicles ?? []).map((vehicle, index) => ({
-      id: vehicle.id ?? `vehicle-${index}`,
-      plateNumber: vehicle.plateNumber,
-      trailerNumber: vehicle.trailerNumber,
-      driverName: vehicle.driverName,
-      vehicleType: vehicle.vehicleType,
-      nationality: vehicle.nationality,
-      containerNumber: vehicle.containerNumber ?? 'Không có dữ liệu',
-      phoneNumber: vehicle.phoneNumber ?? 'Chưa cập nhật',
-      statusLabel: vehicle.statusLabel ?? 'Đang theo dõi',
-      transshipmentPlateNumber: vehicle.transshipmentPlateNumber ?? 'Không sang tải',
-      responsiblePlateNumber: vehicle.responsiblePlateNumber ?? 'Không có dữ liệu',
-      goodsGroup: vehicle.goodsGroup ?? 'Chưa cập nhật',
-      note: vehicle.note ?? 'Không có ghi chú',
-      transportLicenseNumber: vehicle.transportLicenseNumber ?? 'Chưa cập nhật',
-      weight: formatWeight(vehicle.weight),
-      price: formatCurrency(vehicle.price),
-      feeRate: vehicle.feeRate !== undefined ? `${vehicle.feeRate}` : 'Chưa cập nhật',
-      borderGuardConfirmed: vehicle.borderGuardConfirmed ?? false,
-      customsArrivalConfirmed: vehicle.customsArrivalConfirmed ?? false,
-      inParkingConfirmed: vehicle.inParkingConfirmed ?? false,
-      transportLicenseConfirmed: vehicle.transportLicenseConfirmed ?? false,
-      borderGuardAt: formatApiDateTime(vehicle.borderGuardAt),
-      customsArrivalAt: formatApiDateTime(vehicle.customsArrivalAt),
-      inParkingAt: formatApiDateTime(vehicle.inParkingAt),
-      transportLicenseConfirmedAt: formatApiDateTime(vehicle.transportLicenseConfirmedAt),
-      customsProcessingAt: formatApiDateTime(vehicle.customsProcessingAt),
-      outParkingBorderGuardAt: formatApiDateTime(vehicle.outParkingBorderGuardAt),
-      outParkingCustomsAt: formatApiDateTime(vehicle.outParkingCustomsAt)
-    })),
+    vehicles: (declaration.vehicles ?? [])
+      .filter((vehicle) => vehicle.nationality?.toUpperCase() === 'CN')
+      .map((vehicle, index) => ({
+        id: vehicle.id ?? `vehicle-${index}`,
+        plateNumber: vehicle.plateNumber,
+        trailerNumber: vehicle.trailerNumber,
+        driverName: vehicle.driverName,
+        vehicleType: vehicle.vehicleType,
+        nationality: vehicle.nationality,
+        containerNumber: vehicle.containerNumber ?? 'Không có dữ liệu',
+        phoneNumber: vehicle.phoneNumber ?? 'Chưa cập nhật',
+        statusLabel: vehicle.statusLabel ?? 'Đang theo dõi',
+        transshipmentPlateNumber: vehicle.transshipmentPlateNumber ?? 'Không sang tải',
+        responsiblePlateNumber: vehicle.responsiblePlateNumber ?? 'Không có dữ liệu',
+        goodsGroup: vehicle.goodsGroup ?? 'Chưa cập nhật',
+        note: vehicle.note ?? 'Không có ghi chú',
+        transportLicenseNumber: vehicle.transportLicenseNumber ?? 'Chưa cập nhật',
+        weight: formatWeight(vehicle.weight),
+        selfWeight: formatWeight(vehicle.selfWeight),
+        price: formatCurrency(vehicle.price),
+        feeRate: vehicle.feeRate !== undefined ? `${vehicle.feeRate}` : 'Chưa cập nhật',
+        unloadingPlace: vehicle.unloadingPlace ?? 'Chưa cập nhật',
+        borderGuardConfirmed: vehicle.borderGuardConfirmed ?? false,
+        customsArrivalConfirmed: vehicle.customsArrivalConfirmed ?? false,
+        inParkingConfirmed: vehicle.inParkingConfirmed ?? false,
+        transportLicenseConfirmed: vehicle.transportLicenseConfirmed ?? false,
+        borderGuardAt: formatApiDateTime(vehicle.borderGuardAt),
+        customsArrivalAt: formatApiDateTime(vehicle.customsArrivalAt),
+        inParkingAt: formatApiDateTime(vehicle.inParkingAt),
+        transportLicenseConfirmedAt: formatApiDateTime(vehicle.transportLicenseConfirmedAt),
+        customsProcessingAt: formatApiDateTime(vehicle.customsProcessingAt),
+        outParkingBorderGuardAt: formatApiDateTime(vehicle.outParkingBorderGuardAt),
+        outParkingCustomsAt: formatApiDateTime(vehicle.outParkingCustomsAt)
+      })),
     transshipmentVehicles: (declaration.transshipmentVehicles ?? []).map((vehicle, index) => ({
       id: vehicle.id ?? `transshipment-vehicle-${index}`,
       sourcePlateNumber: vehicle.sourcePlateNumber,
@@ -1016,6 +1034,7 @@ function toCuaKhauSoDeclarationView(
       statusLabel: vehicle.statusLabel ?? 'Đang theo dõi',
       note: vehicle.note ?? 'Không có ghi chú',
       weight: formatWeight(vehicle.weight),
+      driverIdentityNumber: vehicle.driverIdentityNumber ?? 'Chưa cập nhật',
       price: formatCurrency(vehicle.price),
       feeRate: vehicle.feeRate !== undefined ? `${vehicle.feeRate}` : 'Chưa cập nhật',
       vehicleRegistrationFormId: vehicle.vehicleRegistrationFormId ?? 'Chưa cập nhật',
@@ -1027,6 +1046,7 @@ function toCuaKhauSoDeclarationView(
       borderGuardEnteredAt: formatApiDateTime(vehicle.borderGuardEnteredAt),
       customsEnteredAt: formatApiDateTime(vehicle.customsEnteredAt),
       changeConfirmedAt: formatApiDateTime(vehicle.changeConfirmedAt),
+      borderGuardOutAt: formatApiDateTime(vehicle.borderGuardOutAt),
       customsOutAt: formatApiDateTime(vehicle.customsOutAt),
       medicalQuarantineAt: formatApiDateTime(vehicle.medicalQuarantineAt)
     })),
@@ -1357,6 +1377,17 @@ function getNextAction(status: TripStatus, delayMinutes: number) {
   };
 
   return actions[status];
+}
+
+function isKnownCuaKhauSoDeclarationNumber(value?: string | null) {
+  const normalizedValue = value?.trim();
+
+  return Boolean(
+    normalizedValue &&
+    normalizedValue !== 'Chưa cập nhật' &&
+    normalizedValue !== 'Không có dữ liệu' &&
+    normalizedValue !== 'Chưa có dữ liệu'
+  );
 }
 
 function formatWeight(value?: string | number | null) {

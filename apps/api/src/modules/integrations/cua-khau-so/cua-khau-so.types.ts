@@ -174,9 +174,11 @@ export type CuaKhauSoVehicleDetail = CuaKhauSoVehicleBrief & {
     code?: string | null;
   } | null;
   weight?: number | null;
+  loadDueToOwnWeight?: number | null;
   price?: number | null;
   feeRate?: number | null;
   numberOfContainer?: string | null;
+  dedicatedLicensePlate?: string | null;
   isChangeVehicle?: boolean | null;
   vehicleNationalityType?: 'VN' | 'CN' | string | null;
   checkPhytosanitary?: boolean | null;
@@ -200,6 +202,7 @@ export type CuaKhauSoVehicleDetail = CuaKhauSoVehicleBrief & {
   confirmTransportLicenseTime?: string | null;
   confirmTransportLicenseNote?: string | null;
   description?: string | null;
+  unloadingPlace?: string | null;
   confirmOutParkingCustoms?: boolean | null;
   confirmOutParkingCustomsTime?: string | null;
   confirmOutParkingBorderGuard?: boolean | null;
@@ -249,6 +252,7 @@ export type CuaKhauSoChangeVehicleDetail = {
   licencePlate?: string | null;
   licencePlateChange?: string | null;
   driverName?: string | null;
+  driverCMND?: string | null;
   areaChange?: string | null;
   price?: number | null;
   feeRate?: number | null;
@@ -265,8 +269,12 @@ export type CuaKhauSoChangeVehicleDetail = {
   checkMedicalQuarantineTime?: string | null;
   checkChangeVehicleOutGateCustomVN?: boolean | null;
   checkChangeVehicleOutGateCustomVNTime?: string | null;
+  checkChangeVehicleOutGateVN?: boolean | null;
+  checkChangeVehicleOutGateVNTime?: string | null;
   confirmOutOfParkinglotByCustoms?: boolean | null;
   confirmOutOfParkinglotTimeByCustoms?: string | null;
+  confirmOutOfParkinglotByBorderGate?: boolean | null;
+  confirmOutOfParkinglotTimeByBorderGate?: string | null;
   emptyVehicleEnteredGateTime?: string | null;
   emptyVehicleEnteredGateCustomsTime?: string | null;
 };
@@ -363,8 +371,10 @@ export type CuaKhauSoDeclarationDetailView = CuaKhauSoDeclarationSummary & {
     note: string;
     transportLicenseNumber: string;
     weight?: number;
+    selfWeight?: number;
     price?: number;
     feeRate?: number;
+    unloadingPlace?: string;
     borderGuardConfirmed: boolean;
     customsArrivalConfirmed: boolean;
     inParkingConfirmed: boolean;
@@ -390,6 +400,7 @@ export type CuaKhauSoDeclarationDetailView = CuaKhauSoDeclarationSummary & {
     statusLabel: string;
     note: string;
     weight?: number;
+    driverIdentityNumber?: string;
     price?: number;
     feeRate?: number;
     vehicleRegistrationFormId?: string;
@@ -401,6 +412,7 @@ export type CuaKhauSoDeclarationDetailView = CuaKhauSoDeclarationSummary & {
     borderGuardEnteredAt?: string;
     customsEnteredAt?: string;
     changeConfirmedAt?: string;
+    borderGuardOutAt?: string;
     customsOutAt?: string;
     medicalQuarantineAt?: string;
   }>;

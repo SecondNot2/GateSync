@@ -480,8 +480,10 @@ export type ApiCuaKhauSoDeclarationDetail = ApiCuaKhauSoDeclarationSummary & {
     note?: string;
     transportLicenseNumber?: string;
     weight?: number;
+    selfWeight?: number;
     price?: number;
     feeRate?: number;
+    unloadingPlace?: string;
     borderGuardConfirmed?: boolean;
     customsArrivalConfirmed?: boolean;
     inParkingConfirmed?: boolean;
@@ -507,6 +509,7 @@ export type ApiCuaKhauSoDeclarationDetail = ApiCuaKhauSoDeclarationSummary & {
     statusLabel?: string;
     note?: string;
     weight?: number;
+    driverIdentityNumber?: string;
     price?: number;
     feeRate?: number;
     vehicleRegistrationFormId?: string;
@@ -518,6 +521,7 @@ export type ApiCuaKhauSoDeclarationDetail = ApiCuaKhauSoDeclarationSummary & {
     borderGuardEnteredAt?: string;
     customsEnteredAt?: string;
     changeConfirmedAt?: string;
+    borderGuardOutAt?: string;
     customsOutAt?: string;
     medicalQuarantineAt?: string;
   }>;

@@ -365,8 +365,10 @@ function toDevCuaKhauSoDeclaration(tripId: string): OperationsCuaKhauSoDeclarati
         note: 'Không có ghi chú',
         transportLicenseNumber: 'C26YF0666521',
         weight: '3.254,5 kg',
+        selfWeight: '8.045 kg',
         price: '300.000 ₫',
         feeRate: '0.3',
+        unloadingPlace: 'Bãi Xuân Cương',
         borderGuardConfirmed: true,
         customsArrivalConfirmed: true,
         inParkingConfirmed: true,
@@ -375,36 +377,6 @@ function toDevCuaKhauSoDeclaration(tripId: string): OperationsCuaKhauSoDeclarati
         customsArrivalAt: '03/05/2026 13:34',
         inParkingAt: '03/05/2026 13:45',
         transportLicenseConfirmedAt: '03/05/2026 13:50',
-        customsProcessingAt: 'Chưa có dữ liệu',
-        outParkingBorderGuardAt: 'Chưa có dữ liệu',
-        outParkingCustomsAt: 'Chưa có dữ liệu'
-      },
-      {
-        id: 'dev-cks-vehicle-2',
-        plateNumber: '29E06997',
-        trailerNumber: 'Chưa cập nhật',
-        driverName: 'Trần Văn Chính',
-        vehicleType: 'Xe tải sang tải',
-        nationality: 'VN',
-        containerNumber: 'Không có dữ liệu',
-        phoneNumber: 'Chưa cập nhật',
-        statusLabel: 'Xe nhận sang tải',
-        transshipmentPlateNumber: 'Không sang tải',
-        responsiblePlateNumber: 'Không có dữ liệu',
-        goodsGroup: 'Hàng điện tử',
-        note: 'Không có ghi chú',
-        transportLicenseNumber: 'Chưa cập nhật',
-        weight: 'Chưa cập nhật',
-        price: 'Chưa cập nhật',
-        feeRate: 'Chưa cập nhật',
-        borderGuardConfirmed: true,
-        customsArrivalConfirmed: true,
-        inParkingConfirmed: false,
-        transportLicenseConfirmed: false,
-        borderGuardAt: '03/05/2026 13:58',
-        customsArrivalAt: '03/05/2026 14:02',
-        inParkingAt: 'Chưa có dữ liệu',
-        transportLicenseConfirmedAt: 'Chưa có dữ liệu',
         customsProcessingAt: 'Chưa có dữ liệu',
         outParkingBorderGuardAt: 'Chưa có dữ liệu',
         outParkingCustomsAt: 'Chưa có dữ liệu'
@@ -424,6 +396,7 @@ function toDevCuaKhauSoDeclaration(tripId: string): OperationsCuaKhauSoDeclarati
         statusLabel: 'Đã xác nhận sang tải',
         note: 'Không có ghi chú',
         weight: 'Chưa cập nhật',
+        driverIdentityNumber: '.',
         price: 'Chưa cập nhật',
         feeRate: 'Chưa cập nhật',
         vehicleRegistrationFormId: 'bcbad4b8-9378-4eba-beb9-bf853ef5258a',
@@ -435,6 +408,7 @@ function toDevCuaKhauSoDeclaration(tripId: string): OperationsCuaKhauSoDeclarati
         borderGuardEnteredAt: '03/05/2026 13:58',
         customsEnteredAt: '03/05/2026 14:02',
         changeConfirmedAt: '03/05/2026 14:21',
+        borderGuardOutAt: 'Chưa có dữ liệu',
         customsOutAt: 'Chưa có dữ liệu',
         medicalQuarantineAt: '03/05/2026 14:05'
       }
@@ -556,31 +530,58 @@ function toDevTripSummary(trip: (typeof demoTrips)[number]): OperationsTripSumma
 
   if (declaration) {
     if (declaration.goods && Array.isArray(declaration.goods)) {
-      summary.companies = Array.from(new Set(declaration.goods.map((g) => g.companyName).filter(Boolean)));
-      summary.customsDeclarationsCount = new Set(declaration.goods.map((g) => g.declarationNumber).filter(Boolean)).size;
+      summary.companies = Array.from(
+        new Set(declaration.goods.map((g) => g.companyName).filter(Boolean))
+      );
+      summary.customsDeclarationsCount = new Set(
+        declaration.goods.map((g) => g.declarationNumber).filter(Boolean)
+      ).size;
     } else if (declaration.summary.goodsName) {
       summary.companies = [declaration.summary.goodsName];
     }
 
-    if (declaration.vehicles && Array.isArray(declaration.vehicles) && declaration.vehicles.length > 0) {
+    if (
+      declaration.vehicles &&
+      Array.isArray(declaration.vehicles) &&
+      declaration.vehicles.length > 0
+    ) {
       const v = declaration.vehicles[0];
       if (v?.trailerNumber !== undefined) summary.trailerNumber = v.trailerNumber;
-      if (v?.plateNumber && (summary.vehicle.plateNumber === 'Chưa gán xe' || summary.vehicle.plateNumber === 'Chưa cập nhật' || summary.vehicle.plateNumber === 'Không có dữ liệu')) {
+      if (
+        v?.plateNumber &&
+        (summary.vehicle.plateNumber === 'Chưa gán xe' ||
+          summary.vehicle.plateNumber === 'Chưa cập nhật' ||
+          summary.vehicle.plateNumber === 'Không có dữ liệu')
+      ) {
         summary.vehicle.plateNumber = v.plateNumber as string;
       }
-      if (v?.driverName && (summary.driver.name === 'Chưa gán tài xế' || summary.driver.name === 'Chưa cập nhật' || summary.driver.name === 'Không có dữ liệu')) {
+      if (
+        v?.driverName &&
+        (summary.driver.name === 'Chưa gán tài xế' ||
+          summary.driver.name === 'Chưa cập nhật' ||
+          summary.driver.name === 'Không có dữ liệu')
+      ) {
         summary.driver.name = v.driverName as string;
       }
     } else {
       if (declaration.summary.trailerNumber !== undefined) {
         summary.trailerNumber = declaration.summary.trailerNumber;
       }
-      if (declaration.summary.plateNumber && (summary.vehicle.plateNumber === 'Chưa gán xe' || summary.vehicle.plateNumber === 'Chưa cập nhật' || summary.vehicle.plateNumber === 'Không có dữ liệu')) {
+      if (
+        declaration.summary.plateNumber &&
+        (summary.vehicle.plateNumber === 'Chưa gán xe' ||
+          summary.vehicle.plateNumber === 'Chưa cập nhật' ||
+          summary.vehicle.plateNumber === 'Không có dữ liệu')
+      ) {
         summary.vehicle.plateNumber = declaration.summary.plateNumber;
       }
     }
 
-    if (declaration.transshipmentVehicles && Array.isArray(declaration.transshipmentVehicles) && declaration.transshipmentVehicles.length > 0) {
+    if (
+      declaration.transshipmentVehicles &&
+      Array.isArray(declaration.transshipmentVehicles) &&
+      declaration.transshipmentVehicles.length > 0
+    ) {
       const transshipment = declaration.transshipmentVehicles[0]?.plateNumber;
       if (transshipment !== undefined) summary.transshipmentPlateNumber = transshipment;
     } else if (declaration.summary.changePlateNumber) {
@@ -588,7 +589,10 @@ function toDevTripSummary(trip: (typeof demoTrips)[number]): OperationsTripSumma
     }
 
     if (declaration.procedureSteps && Array.isArray(declaration.procedureSteps)) {
-      const currentStep = declaration.procedureSteps.slice().reverse().find((s) => s.done);
+      const currentStep = declaration.procedureSteps
+        .slice()
+        .reverse()
+        .find((s) => s.done);
       if (currentStep) {
         summary.procedureStepStatus = currentStep.label;
       }
