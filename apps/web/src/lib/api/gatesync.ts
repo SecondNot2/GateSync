@@ -77,6 +77,12 @@ export const gatesyncApi = {
   markNotificationRead: (notificationId: string, { accessToken }: AuthenticatedOptions) =>
     apiClient.patch<ApiNotification>(`/notifications/${notificationId}/read`, {}, { accessToken }),
 
+  markAllNotificationsRead: ({ accessToken }: AuthenticatedOptions) =>
+    apiClient.patch<{ count: number }>('/notifications/read-all', {}, { accessToken }),
+
+  clearNotifications: ({ accessToken }: AuthenticatedOptions) =>
+    apiClient.delete<{ count: number }>('/notifications', { accessToken }),
+
   listOrganizations: ({ accessToken }: AuthenticatedOptions) =>
     apiClient.get<ApiOrganization[]>('/organizations', { accessToken }),
 

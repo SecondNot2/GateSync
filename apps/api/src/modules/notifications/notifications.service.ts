@@ -137,6 +137,29 @@ export class NotificationsService {
     });
   }
 
+  async markAllRead(user: RequestUser) {
+    return this.prisma.notification.updateMany({
+      where: {
+        recipientUserId: user.id,
+        status: {
+          not: 'READ'
+        }
+      },
+      data: {
+        status: 'READ',
+        readAt: new Date()
+      }
+    });
+  }
+
+  async clearAll(user: RequestUser) {
+    return this.prisma.notification.deleteMany({
+      where: {
+        recipientUserId: user.id
+      }
+    });
+  }
+
   async createTripEventNotifications(
     prisma: PrismaExecutor,
     organizationId: string,
