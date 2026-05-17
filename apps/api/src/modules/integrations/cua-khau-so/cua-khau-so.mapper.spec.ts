@@ -153,17 +153,17 @@ test('CuaKhauSoMapper requires license and VN transshipment vehicle BP/HQ times 
     {
       id: '84b718cf-4a72-4c7e-91d8-24e51ae53154',
       numberOfDeclaration: '2026050300533',
-      createDate: '2026-05-03T13:15:21.972699',
+      createDate: '2026-05-03T13:15:21.972699Z',
       type: 0,
       registrationTransportDetails: [
         {
           vehicleNationalityType: 'CN',
           checkBorderGuard: true,
-          checkBorderGuardTime: '2026-05-03T13:20:21.972699',
+          checkBorderGuardTime: '2026-05-03T13:20:21.972699Z',
           confirmArrivalVehicleCustoms: true,
-          confirmArrivalVehicleCustomsTime: '2026-05-03T13:21:21.972699',
+          confirmArrivalVehicleCustomsTime: '2026-05-03T13:21:21.972699Z',
           confirmTransportLicense: true,
-          confirmTransportLicenseTime: '2026-05-03T13:22:21.972699'
+          confirmTransportLicenseTime: '2026-05-03T13:22:21.972699Z'
         }
       ],
       businessVehicleRegistrationForms: [
@@ -177,12 +177,12 @@ test('CuaKhauSoMapper requires license and VN transshipment vehicle BP/HQ times 
             id: 'cv-1',
             licencePlate: 'FF0666',
             licencePlateChange: '29E06997',
-            emptyVehicleEnteredGateTime: '2026-05-03T13:23:21.972699',
-            emptyVehicleEnteredGateCustomsTime: '2026-05-03T13:24:21.972699',
+            emptyVehicleEnteredGateTime: '2026-05-03T13:23:21.972699Z',
+            emptyVehicleEnteredGateCustomsTime: '2026-05-03T13:24:21.972699Z',
             checkChangeVehicle: true,
-            checkChangeVehicleTime: '2026-05-03T13:25:21.972699',
-            confirmOutOfParkinglotTimeByBorderGate: '2026-05-03T13:26:21.972699',
-            checkChangeVehicleOutGateCustomVNTime: '2026-05-03T13:27:21.972699'
+            checkChangeVehicleTime: '2026-05-03T13:25:21.972699Z',
+            confirmOutOfParkinglotTimeByBorderGate: '2026-05-03T13:26:21.972699Z',
+            checkChangeVehicleOutGateCustomVNTime: '2026-05-03T13:27:21.972699Z'
           }
         ]
       }
@@ -199,8 +199,8 @@ test('CuaKhauSoMapper requires license and VN transshipment vehicle BP/HQ times 
   );
   assert.equal(mapped.transshipmentVehicles[0]?.borderGuardEntered, true);
   assert.equal(mapped.transshipmentVehicles[0]?.customsEntered, true);
-  assert.equal(mapped.transshipmentVehicles[0]?.borderGuardOutAt, '2026-05-03T06:26:21.972Z');
-  assert.equal(mapped.transshipmentVehicles[0]?.customsOutAt, '2026-05-03T06:27:21.972Z');
+  assert.equal(mapped.transshipmentVehicles[0]?.borderGuardOutAt, '2026-05-03T13:26:21.972Z');
+  assert.equal(mapped.transshipmentVehicles[0]?.customsOutAt, '2026-05-03T13:27:21.972Z');
 });
 
 test('CuaKhauSoMapper maps export declaration with correct direction and completion', () => {
