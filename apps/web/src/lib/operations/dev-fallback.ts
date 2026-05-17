@@ -208,7 +208,7 @@ function toDevCuaKhauSoDeclaration(tripId: string): OperationsCuaKhauSoDeclarati
       plateNumber: 'FF0666',
       trailerNumber: 'Chưa cập nhật',
       changePlateNumber: '29E06997, 29E07714',
-      totalWeight: '3,25 kg',
+      totalWeight: '3.254,5 kg',
       createdAt: '03/05/2026 13:15'
     },
     freshness: {
@@ -317,8 +317,8 @@ function toDevCuaKhauSoDeclaration(tripId: string): OperationsCuaKhauSoDeclarati
         id: 'dev-representative-goods-1',
         name: 'Mô-đun màn hình LCD 14 inch',
         hsCode: 'Chưa cập nhật',
-        weight: '0 kg',
-        priceVnd: '630.000 ₫'
+        weight: 'Chưa cập nhật',
+        priceVnd: '$630,000.00'
       }
     ],
     customsDeclarations: [
@@ -342,8 +342,8 @@ function toDevCuaKhauSoDeclaration(tripId: string): OperationsCuaKhauSoDeclarati
             id: 'dev-goods-item-1',
             name: 'Mô-đun màn hình LCD 14 inch',
             hsCode: 'Chưa cập nhật',
-            weight: '0 kg',
-            priceVnd: '630.000 ₫'
+            weight: 'Chưa cập nhật',
+            priceVnd: '$630,000.00'
           }
         ]
       }

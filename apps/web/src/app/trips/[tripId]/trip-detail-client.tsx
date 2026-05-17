@@ -582,6 +582,26 @@ function CuaKhauSoDeclarationSection({
           title={declaration.transshipment.statusLabel}
           detail={`GPLV: ${declaration.transshipment.licenseNumber}`}
         />
+        <InfoCard
+          label="Khối lượng tờ khai"
+          title={declaration.summary.totalWeight}
+          detail="Khối lượng tổng từ Cửa khẩu số (đã quy đổi tấn → kg)"
+        />
+        <InfoCard
+          label="Loại hàng"
+          title={declaration.summary.goodsName}
+          detail={`Biển sang tải: ${declaration.summary.changePlateNumber}`}
+        />
+        <InfoCard
+          label="Ngày đăng ký"
+          title={declaration.summary.createdAt}
+          detail={`External ID: ${declaration.summary.externalId}`}
+        />
+        <InfoCard
+          label="Đối chiếu nguồn"
+          title={declaration.freshness.sourceObservedAt}
+          detail={`Cập nhật: ${declaration.freshness.sourceUpdatedAt}`}
+        />
       </div>
 
       <details
@@ -692,10 +712,10 @@ function CuaKhauSoDeclarationSection({
       <CksDataTable
         title="Thông tin hàng hóa đại diện"
         emptyText="Chưa có hàng hóa đại diện từ Cửa khẩu số."
-        headers={['STT', 'Tên hàng', 'Khối lượng', 'Giá trị hàng hóa']}
+        headers={['STT', 'Tên hàng', 'Giá trị hàng hóa']}
         rows={declaration.representativeGoods.map((item, index) => ({
           key: item.id,
-          cells: [index + 1, item.name, item.weight, item.priceVnd]
+          cells: [index + 1, item.name, item.priceVnd]
         }))}
       />
 
@@ -898,10 +918,10 @@ function CksDataTable({
           <table className="w-full table-fixed border-separate border-spacing-0 text-left text-xs">
             <thead>
               <tr className="bg-slate-100 text-[0.68rem] font-bold uppercase tracking-[0.08em] text-slate-500">
-                {headers.map((header) => (
+                {headers.map((header, headerIndex) => (
                   <th
                     key={header}
-                    className="break-words px-2 py-2 align-bottom leading-4 first:pl-4 last:pr-4"
+                    className={`break-words px-2 py-2 align-bottom leading-4 first:pl-4 last:pr-4${headerIndex === 0 ? ' w-12' : ''}`}
                   >
                     {header}
                   </th>

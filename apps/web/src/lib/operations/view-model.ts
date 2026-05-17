@@ -432,10 +432,19 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   hour12: false
 });
 const numberFormatter = new Intl.NumberFormat('vi-VN');
+const weightFormatter = new Intl.NumberFormat('vi-VN', {
+  maximumFractionDigits: 1
+});
 const currencyFormatter = new Intl.NumberFormat('vi-VN', {
   style: 'currency',
   currency: 'VND',
   maximumFractionDigits: 0
+});
+const usdFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
 });
 
 const statusGroupDisplay: Record<string, Omit<OperationsStatusGroup, 'count' | 'statuses'>> = {
@@ -575,19 +584,43 @@ export function toApiTripDetailView(
 ): TripDetailViewData {
   const summary = toTripSummaryView(trip);
   const cuaKhauSoDeclaration = toCuaKhauSoDeclarationView(trip.cuaKhauSoDeclaration);
+  const cksFallback = trip.cuaKhauSoDeclaration;
+  const cksFirstVehicle = cksFallback?.vehicles?.[0];
+  const cksDescription =
+    cksFallback?.companyGoodsName?.trim() && cksFallback.companyGoodsName !== 'Chưa cập nhật'
+      ? cksFallback.companyGoodsName
+      : undefined;
+  const cksContainerNumber =
+    cksFirstVehicle?.containerNumber &&
+    cksFirstVehicle.containerNumber !== 'Không có dữ liệu' &&
+    cksFirstVehicle.containerNumber !== 'Chưa cập nhật'
+      ? cksFirstVehicle.containerNumber
+      : undefined;
+  const cksWeightKg = resolveWeightKgFromCks(cksFallback?.totalWeight, cksFirstVehicle?.weight);
   const mappedTrip: OperationsTripDetail = {
     ...summary,
     shipment: {
-      description: trip.shipment?.description ?? 'Chưa có mô tả hàng hóa',
-      containerNumber: trip.shipment?.containerNumber ?? 'Chưa cập nhật',
+      description: trip.shipment?.description ?? cksDescription ?? 'Chưa có mô tả hàng hóa',
+      containerNumber: trip.shipment?.containerNumber ?? cksContainerNumber ?? 'Chưa cập nhật',
       sealNumber: trip.shipment?.sealNumber ?? 'Chưa cập nhật',
-      weightKg: formatWeight(trip.shipment?.weightKg)
+      weightKg: trip.shipment?.weightKg
+        ? formatWeight(trip.shipment.weightKg)
+        : (cksWeightKg ?? 'Chưa cập nhật')
     },
     declaration: {
-      number: trip.customsDeclaration?.declarationNumber ?? 'Chưa liên kết tờ khai',
+      number:
+        trip.customsDeclaration?.declarationNumber ??
+        cksFallback?.declarationNumber ??
+        'Chưa liên kết tờ khai',
       status:
-        trip.customsDeclaration?.sourceStatus ?? trip.customsDeclaration?.status ?? 'Chưa cập nhật',
-      customsOfficeCode: trip.customsDeclaration?.customsOfficeCode ?? 'Chưa cập nhật'
+        trip.customsDeclaration?.sourceStatus ??
+        trip.customsDeclaration?.status ??
+        cksFallback?.statusLabel ??
+        cksFallback?.sourceStatus ??
+        cksFallback?.status ??
+        'Chưa cập nhật',
+      customsOfficeCode:
+        trip.customsDeclaration?.customsOfficeCode ?? cksFallback?.gateCode ?? 'Chưa cập nhật'
     },
     participants: trip.participants.map((participant) => ({
       id: participant.id,
@@ -919,6 +952,8 @@ function toCuaKhauSoDeclarationView(
 
   const paymentStatus = declaration.paymentStatus ?? 'Chưa có thông tin phí';
   const paymentPaid = paymentStatus === 'Đã thanh toán';
+  const isImport = declaration.direction === 'IMPORT';
+  const formatGoodsPrice = isImport ? formatUsd : formatCurrency;
 
   return {
     summary: {
@@ -936,7 +971,7 @@ function toCuaKhauSoDeclarationView(
       plateNumber: declaration.plateNumber ?? 'Chưa cập nhật',
       trailerNumber: declaration.trailerNumber ?? 'Chưa cập nhật',
       changePlateNumber: declaration.changePlateNumber ?? 'Không sang tải',
-      totalWeight: formatWeight(declaration.totalWeight),
+      totalWeight: formatTonnesAsKg(declaration.totalWeight),
       createdAt: formatApiDateTime(declaration.createdAt)
     },
     freshness: {
@@ -974,8 +1009,8 @@ function toCuaKhauSoDeclarationView(
         id: item.id ?? `representative-goods-${groupIndex}-${itemIndex}`,
         name: item.name,
         hsCode: item.hsCode,
-        weight: formatWeight(item.weight),
-        priceVnd: formatCurrency(item.priceVnd)
+        weight: formatWeightOrEmpty(item.weight),
+        priceVnd: formatGoodsPrice(item.priceVnd)
       }))
     ),
     customsDeclarations: (declaration.goods ?? [])
@@ -997,43 +1032,42 @@ function toCuaKhauSoDeclarationView(
         id: item.id ?? `goods-${index}-${itemIndex}`,
         name: item.name,
         hsCode: item.hsCode,
-        weight: formatWeight(item.weight),
-        priceVnd: formatCurrency(item.priceVnd)
+        weight: formatWeightOrEmpty(item.weight),
+        priceVnd: formatGoodsPrice(item.priceVnd)
       }))
     })),
-    vehicles: (declaration.vehicles ?? [])
-      .map((vehicle, index) => ({
-        id: vehicle.id ?? `vehicle-${index}`,
-        plateNumber: vehicle.plateNumber,
-        trailerNumber: vehicle.trailerNumber,
-        driverName: vehicle.driverName,
-        vehicleType: vehicle.vehicleType,
-        nationality: vehicle.nationality,
-        containerNumber: vehicle.containerNumber ?? 'Không có dữ liệu',
-        phoneNumber: vehicle.phoneNumber ?? 'Chưa cập nhật',
-        statusLabel: vehicle.statusLabel ?? 'Đang theo dõi',
-        transshipmentPlateNumber: vehicle.transshipmentPlateNumber ?? 'Không sang tải',
-        responsiblePlateNumber: vehicle.responsiblePlateNumber ?? 'Không có dữ liệu',
-        goodsGroup: vehicle.goodsGroup ?? 'Chưa cập nhật',
-        note: vehicle.note ?? 'Không có ghi chú',
-        transportLicenseNumber: vehicle.transportLicenseNumber ?? 'Chưa cập nhật',
-        weight: formatWeight(vehicle.weight),
-        selfWeight: formatWeight(vehicle.selfWeight),
-        price: formatCurrency(vehicle.price),
-        feeRate: vehicle.feeRate !== undefined ? `${vehicle.feeRate}` : 'Chưa cập nhật',
-        unloadingPlace: vehicle.unloadingPlace ?? 'Chưa cập nhật',
-        borderGuardConfirmed: vehicle.borderGuardConfirmed ?? false,
-        customsArrivalConfirmed: vehicle.customsArrivalConfirmed ?? false,
-        inParkingConfirmed: vehicle.inParkingConfirmed ?? false,
-        transportLicenseConfirmed: vehicle.transportLicenseConfirmed ?? false,
-        borderGuardAt: formatApiDateTime(vehicle.borderGuardAt),
-        customsArrivalAt: formatApiDateTime(vehicle.customsArrivalAt),
-        inParkingAt: formatApiDateTime(vehicle.inParkingAt),
-        transportLicenseConfirmedAt: formatApiDateTime(vehicle.transportLicenseConfirmedAt),
-        customsProcessingAt: formatApiDateTime(vehicle.customsProcessingAt),
-        outParkingBorderGuardAt: formatApiDateTime(vehicle.outParkingBorderGuardAt),
-        outParkingCustomsAt: formatApiDateTime(vehicle.outParkingCustomsAt)
-      })),
+    vehicles: (declaration.vehicles ?? []).map((vehicle, index) => ({
+      id: vehicle.id ?? `vehicle-${index}`,
+      plateNumber: vehicle.plateNumber,
+      trailerNumber: vehicle.trailerNumber,
+      driverName: vehicle.driverName,
+      vehicleType: vehicle.vehicleType,
+      nationality: vehicle.nationality,
+      containerNumber: vehicle.containerNumber ?? 'Không có dữ liệu',
+      phoneNumber: vehicle.phoneNumber ?? 'Chưa cập nhật',
+      statusLabel: vehicle.statusLabel ?? 'Đang theo dõi',
+      transshipmentPlateNumber: vehicle.transshipmentPlateNumber ?? 'Không sang tải',
+      responsiblePlateNumber: vehicle.responsiblePlateNumber ?? 'Không có dữ liệu',
+      goodsGroup: vehicle.goodsGroup ?? 'Chưa cập nhật',
+      note: vehicle.note ?? 'Không có ghi chú',
+      transportLicenseNumber: vehicle.transportLicenseNumber ?? 'Chưa cập nhật',
+      weight: formatWeight(vehicle.weight),
+      selfWeight: formatWeight(vehicle.selfWeight),
+      price: formatCurrency(vehicle.price),
+      feeRate: vehicle.feeRate !== undefined ? `${vehicle.feeRate}` : 'Chưa cập nhật',
+      unloadingPlace: vehicle.unloadingPlace ?? 'Chưa cập nhật',
+      borderGuardConfirmed: vehicle.borderGuardConfirmed ?? false,
+      customsArrivalConfirmed: vehicle.customsArrivalConfirmed ?? false,
+      inParkingConfirmed: vehicle.inParkingConfirmed ?? false,
+      transportLicenseConfirmed: vehicle.transportLicenseConfirmed ?? false,
+      borderGuardAt: formatApiDateTime(vehicle.borderGuardAt),
+      customsArrivalAt: formatApiDateTime(vehicle.customsArrivalAt),
+      inParkingAt: formatApiDateTime(vehicle.inParkingAt),
+      transportLicenseConfirmedAt: formatApiDateTime(vehicle.transportLicenseConfirmedAt),
+      customsProcessingAt: formatApiDateTime(vehicle.customsProcessingAt),
+      outParkingBorderGuardAt: formatApiDateTime(vehicle.outParkingBorderGuardAt),
+      outParkingCustomsAt: formatApiDateTime(vehicle.outParkingCustomsAt)
+    })),
     transshipmentVehicles: (declaration.transshipmentVehicles ?? []).map((vehicle, index) => ({
       id: vehicle.id ?? `transshipment-vehicle-${index}`,
       sourcePlateNumber: vehicle.sourcePlateNumber,
@@ -1125,6 +1159,18 @@ function toCuaKhauSoGeneralInfo(declaration: ApiCuaKhauSoTripDeclaration) {
     {
       label: 'Ngày đăng ký',
       value: formatApiDateTime(declaration.createdAt)
+    },
+    {
+      label: 'Số tờ khai biên phòng',
+      value: declaration.borderGuardDeclarationNumber ?? 'Chưa cập nhật'
+    },
+    {
+      label: 'Thời gian đến cửa khẩu',
+      value: declaration.arrivalAt ? formatMaybeDateTime(declaration.arrivalAt) : 'Chưa cập nhật'
+    },
+    {
+      label: 'Khối lượng tổng',
+      value: formatTonnesAsKg(declaration.totalWeight)
     }
   ];
 }
@@ -1229,6 +1275,14 @@ function formatCurrency(value?: number | null) {
   }
 
   return currencyFormatter.format(value);
+}
+
+function formatUsd(value?: number | null) {
+  if (value === undefined || value === null) {
+    return 'Chưa cập nhật';
+  }
+
+  return usdFormatter.format(value);
 }
 
 function formatMaybeDateTime(value: string) {
@@ -1415,4 +1469,64 @@ function formatWeight(value?: string | number | null) {
   }
 
   return `${numberFormatter.format(numericValue)} kg`;
+}
+
+/**
+ * Giống formatWeight nhưng trả về "Chưa cập nhật" khi giá trị = 0
+ * (CKS thường trả weight=0 cho hàng hóa khi chưa có dữ liệu thực tế).
+ */
+function formatWeightOrEmpty(value?: number | null) {
+  if (value === undefined || value === null || value === 0) {
+    return 'Chưa cập nhật';
+  }
+
+  return `${numberFormatter.format(value)} kg`;
+}
+
+/**
+ * Định dạng giá trị khối lượng do CKS trả về tính bằng tấn (vd: 3.2545)
+ * thành chuỗi hiển thị tính bằng kg (vd: "3.254,5 kg").
+ */
+function formatTonnesAsKg(value?: number | null) {
+  if (value === undefined || value === null) {
+    return 'Chưa cập nhật';
+  }
+
+  const numericValue = Number(value);
+
+  if (Number.isNaN(numericValue)) {
+    return 'Chưa cập nhật';
+  }
+
+  const kilograms = Math.round(numericValue * 1000 * 10) / 10;
+
+  return `${weightFormatter.format(kilograms)} kg`;
+}
+
+/**
+ * Lấy khối lượng (kg) tốt nhất có sẵn từ tờ khai CKS để hiển thị trong khối hàng hóa.
+ * Ưu tiên `vehicle.weight` (đã ở kg), sau đó dùng `totalWeight` (tấn) chuyển sang kg.
+ */
+function resolveWeightKgFromCks(
+  totalWeightTonnes?: number | null,
+  vehicleWeightKg?: number | null
+) {
+  if (
+    typeof vehicleWeightKg === 'number' &&
+    Number.isFinite(vehicleWeightKg) &&
+    vehicleWeightKg > 0
+  ) {
+    return `${weightFormatter.format(vehicleWeightKg)} kg`;
+  }
+
+  if (
+    typeof totalWeightTonnes === 'number' &&
+    Number.isFinite(totalWeightTonnes) &&
+    totalWeightTonnes > 0
+  ) {
+    const kilograms = Math.round(totalWeightTonnes * 1000 * 10) / 10;
+    return `${weightFormatter.format(kilograms)} kg`;
+  }
+
+  return undefined;
 }
