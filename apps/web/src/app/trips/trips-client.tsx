@@ -16,9 +16,9 @@ import {
   StatePanel,
   TextInput
 } from '@/components/ui';
-import type { ListTripsParams } from '@/lib/api/types';
+import type { OrganizationAccessIssue } from '@/lib/operations/errors';
+import { isOrganizationAccessError } from '@/lib/operations/errors';
 import { loadTripsData, runCuaKhauSoSyncNow } from '@/lib/operations/data';
-import { isOrganizationAccessError, type OrganizationAccessIssue } from '@/lib/operations/errors';
 import {
   countActiveTripFilters,
   hasAdvancedTripFilters,
@@ -762,8 +762,6 @@ function DeclarationSignal({
   );
 }
 
-
-
 function FilterSummary({
   label,
   value,
@@ -776,7 +774,10 @@ function FilterSummary({
   return (
     <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</p>
-      <p className="mt-2 text-sm font-semibold text-slate-800" suppressHydrationWarning={suppressHydrationWarning}>
+      <p
+        className="mt-2 text-sm font-semibold text-slate-800"
+        suppressHydrationWarning={suppressHydrationWarning}
+      >
         {value}
       </p>
     </div>
