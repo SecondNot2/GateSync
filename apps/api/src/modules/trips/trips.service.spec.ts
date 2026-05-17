@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RequestUser } from '../auth/request-user';
 import type { OperationsCacheService } from '../cache/operations-cache.service';
@@ -52,7 +53,8 @@ function createService(
     syncQueue as unknown as IntegrationSyncQueueService,
     cache as unknown as OperationsCacheService,
     new TripOperationsService(),
-    new TripStateTransitionService()
+    new TripStateTransitionService(),
+    new EventEmitter2()
   );
 }
 

@@ -8,12 +8,14 @@ import { OrganizationPermissionsGuard } from './organization-permissions.guard';
 import { OrganizationRolesGuard } from './organization-roles.guard';
 import { PermissionsService } from './permissions.service';
 import { SupabaseJwtGuard } from './supabase-jwt.guard';
+import { SupabaseJwtVerifier } from './supabase-jwt.verifier';
 
 @Module({
   imports: [ConfigModule, PrismaModule],
   controllers: [MeController],
   providers: [
     AuthService,
+    SupabaseJwtVerifier,
     SupabaseJwtGuard,
     PermissionsService,
     OrganizationMembershipGuard,
@@ -22,6 +24,7 @@ import { SupabaseJwtGuard } from './supabase-jwt.guard';
   ],
   exports: [
     AuthService,
+    SupabaseJwtVerifier,
     SupabaseJwtGuard,
     PermissionsService,
     OrganizationMembershipGuard,

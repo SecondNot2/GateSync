@@ -1,5 +1,68 @@
 import type { DeclarationStatus, DeclarationType, TripDirection } from '@prisma/client';
 
+/**
+ * Normalized line-item payload consumed by the new `ProviderAdapter.map`
+ * contract for the Cua Khau So provider. One payload corresponds to one
+ * `(declarationNumber, lineId)` record from CKS — the smallest unit that
+ * yields a single normalized `TripEventCommand`.
+ *
+ * The shape mirrors `arbCksPayload` in `@gatesync/shared/test-fixtures` so
+ * property tests share the same input vocabulary as production callers.
+ *
+ * Field semantics follow the CKS integration rules:
+ *  - `licencePlateVNTQ`  → main vehicle plate
+ *  - `licencePlateChange` → transshipment vehicle plate
+ *  - `numberOfMooc` / `numberOfTrailer` → trailer number (mooc preferred)
+ *  - `driverCMND`        → driver identification (sensitive — never log raw)
+ *  - `loadDueToOwnWeight` → weight metric
+ *  - `unloadingPlace`    → unloading location
+ *  - `bpConfirmAt` / `hqConfirmAt` → border-guard / customs authority timestamps
+ *
+ * Validates: Requirements 2.1, 2.2, 2.5
+ */
+export type CksPayload = {
+  /** External declaration number (e.g. `2026050300533`). Required. */
+  declarationNumber?: string | null;
+  /** Stable line identifier within the declaration. Required. */
+  lineId?: string | null;
+  /** Main vehicle plate (Vietnam side). Required. */
+  licencePlateVNTQ?: string | null;
+  /** Transshipment vehicle plate (China-side change). Optional. */
+  licencePlateChange?: string | null;
+  /** Mooc (trailer) number — preferred trailer identifier. */
+  numberOfMooc?: string | null;
+  /** Alternate trailer number when `numberOfMooc` is absent. */
+  numberOfTrailer?: string | null;
+  /** Driver national identity number (CMND/CCCD). Sensitive. Required. */
+  driverCMND?: string | null;
+  /** Driver display name. Optional. */
+  driverName?: string | null;
+  /** Weight metric reported by the source. */
+  loadDueToOwnWeight?: number | null;
+  /** Unloading location text. */
+  unloadingPlace?: string | null;
+  /** Border-guard (CBBP) confirmation time, ISO-8601 string. */
+  bpConfirmAt?: string | null;
+  /** Customs (CBHQ) confirmation time, ISO-8601 string. */
+  hqConfirmAt?: string | null;
+  /**
+   * Source-side status string. Used to map to the correct domain event type.
+   * Recognised values: `WAITING`, `IN_YARD`, `AT_BORDER_GATE`,
+   * `CUSTOMS_PROCESSING`, `INSPECTION_REQUIRED`, `COMPLETED`.
+   */
+  status?: string | null;
+  /** Wall-clock time the line transitioned, ISO-8601 string. Required. */
+  occurredAt?: string | Date | null;
+  /**
+   * Resolved internal trip identifier. Trip resolution is the responsibility
+   * of upstream pipeline stages (declaration → trip linkage); when absent the
+   * mapper rejects rather than fabricating a value.
+   */
+  tripId?: string | null;
+  /** Optional opaque provider record id retained in the normalized payload. */
+  rawProviderId?: string | null;
+};
+
 export type CuaKhauSoDirection = 'IMPORT' | 'EXPORT';
 export type CuaKhauSoListStatus = 1 | 2 | 3;
 export type CuaKhauSoPageSize = 10 | 20 | 50 | 100;

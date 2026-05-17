@@ -1,6 +1,26 @@
 import { Injectable } from '@nestjs/common';
-import type { DeclarationStatus, DeclarationType, TripDirection } from '@prisma/client';
+import {
+  IntegrationProvider,
+  TripEventSource,
+  TripEventType,
+  type DeclarationStatus,
+  type DeclarationType,
+  type IntegrationAccount,
+  type Prisma,
+  type TripDirection
+} from '@prisma/client';
+import { buildIdempotencyKey } from '../idempotency-key';
+
 import type {
+  AdapterContext,
+  MapResult,
+  ProviderAdapter,
+  RejectionReason,
+  SyncCursor
+} from '../adapters/provider-adapter';
+
+import type {
+  CksPayload,
   CuaKhauSoDeclarationDetail,
   CuaKhauSoDeclarationDetailView,
   CuaKhauSoDeclarationListResponse,
@@ -26,7 +46,157 @@ const procedureStepLabels = [
 ] as const;
 
 @Injectable()
-export class CuaKhauSoMapper {
+export class CuaKhauSoMapper implements ProviderAdapter<CksPayload> {
+  /**
+   * Identity used by the provider adapter registry and `buildIdempotencyKey`.
+   * Mirrors `IntegrationProvider.CUA_KHAU_SO` from the Prisma enum.
+   *
+   * Validates: Requirements 2.1, 2.2
+   */
+  readonly provider: IntegrationProvider = IntegrationProvider.CUA_KHAU_SO;
+
+  /**
+   * Pull pending CKS line items for `account`.
+   *
+   * The legacy `CuaKhauSoService` orchestrates fetch/sync today through
+   * `CuaKhauSoClient` and `cua-khau-so-polling.service.ts`. Migrating that
+   * flow to the new `SyncWorker` pipeline is tracked separately; this adapter
+   * implementation provides an empty fetch as a deliberate stub so the
+   * worker can be wired against the registry without disturbing the existing
+   * polling path.
+   */
+  // eslint-disable-next-line require-yield
+  async *fetch(_account: IntegrationAccount, _cursor: SyncCursor): AsyncIterable<CksPayload> {
+    // Intentionally empty until the new worker pipeline replaces
+    // CuaKhauSoPollingService. See task 3.5 / 17.x.
+    return;
+  }
+
+  /**
+   * Map a single CKS line payload into a normalized {@link MapResult}.
+   *
+   * Required fields (any missing → reject with `MISSING_REQUIRED_FIELD`):
+   *  - `declarationNumber`, `lineId`, `licencePlateVNTQ`, `driverCMND`, `occurredAt`
+   *
+   * Tenant scope (`organizationId`) is sourced exclusively from `ctx`
+   * (Property 3 / Requirement 2.1). The idempotency key is built via the
+   * shared `buildIdempotencyKey` helper so retries collapse onto the same
+   * key (Requirement 3.6).
+   *
+   * Validates: Requirements 2.1, 2.2, 2.5
+   */
+  map(payload: CksPayload, ctx: AdapterContext): MapResult {
+    const sourceReference = this.buildCksSourceReference(payload);
+
+    const declarationNumber = this.requireNonEmptyString(payload?.declarationNumber);
+    if (!declarationNumber) {
+      return this.rejectMap(sourceReference, {
+        code: 'MISSING_REQUIRED_FIELD',
+        field: 'declarationNumber',
+        message: 'CKS payload is missing `declarationNumber`.'
+      });
+    }
+
+    const lineId = this.requireNonEmptyString(payload?.lineId);
+    if (!lineId) {
+      return this.rejectMap(sourceReference, {
+        code: 'MISSING_REQUIRED_FIELD',
+        field: 'lineId',
+        message: 'CKS payload is missing `lineId`.'
+      });
+    }
+
+    const licencePlateVNTQ = this.requireNonEmptyString(payload?.licencePlateVNTQ);
+    if (!licencePlateVNTQ) {
+      return this.rejectMap(sourceReference, {
+        code: 'MISSING_REQUIRED_FIELD',
+        field: 'licencePlateVNTQ',
+        message: 'CKS payload is missing `licencePlateVNTQ`.'
+      });
+    }
+
+    const driverCMND = this.requireNonEmptyString(payload?.driverCMND);
+    if (!driverCMND) {
+      return this.rejectMap(sourceReference, {
+        code: 'MISSING_REQUIRED_FIELD',
+        field: 'driverCMND',
+        message: 'CKS payload is missing `driverCMND`.'
+      });
+    }
+
+    const occurredAt = this.parseOccurredAt(payload?.occurredAt);
+    if (!occurredAt) {
+      return this.rejectMap(sourceReference, {
+        code: 'INVALID_OCCURRED_AT',
+        field: 'occurredAt',
+        message: 'CKS payload `occurredAt` is missing or not a valid timestamp.'
+      });
+    }
+
+    const tripId = this.requireNonEmptyString(payload?.tripId);
+    if (!tripId) {
+      // Trip resolution from declaration → trip linkage is upstream of this
+      // adapter; we reject rather than fabricate a value (Requirement 2.5).
+      return this.rejectMap(sourceReference, {
+        code: 'MISSING_REQUIRED_FIELD',
+        field: 'tripId',
+        message: 'CKS payload cannot be mapped without a resolved `tripId`.'
+      });
+    }
+
+    const idempotencyKey = buildIdempotencyKey({
+      provider: this.provider,
+      sourceReference,
+      occurredAt
+    });
+
+    const eventType = this.mapStatusToEventType(payload?.status);
+    const normalizedPayload = this.buildNormalizedCksPayload({
+      declarationNumber,
+      lineId,
+      licencePlateVNTQ,
+      licencePlateChange: this.requireNonEmptyString(payload?.licencePlateChange),
+      trailerNumber: this.requireNonEmptyString(payload?.numberOfMooc ?? payload?.numberOfTrailer),
+      driverName: this.requireNonEmptyString(payload?.driverName),
+      loadDueToOwnWeight:
+        typeof payload?.loadDueToOwnWeight === 'number' &&
+        Number.isFinite(payload.loadDueToOwnWeight)
+          ? payload.loadDueToOwnWeight
+          : undefined,
+      unloadingPlace: this.requireNonEmptyString(payload?.unloadingPlace),
+      bpConfirmAt: this.parseOccurredAt(payload?.bpConfirmAt)?.toISOString(),
+      hqConfirmAt: this.parseOccurredAt(payload?.hqConfirmAt)?.toISOString(),
+      status: this.requireNonEmptyString(payload?.status),
+      rawProviderId: this.requireNonEmptyString(payload?.rawProviderId),
+      occurredAt
+      // NOTE: `driverCMND` is intentionally NOT placed onto the normalized
+      // payload — it is sensitive (CMND/CCCD) and must never be persisted to
+      // `TripEvent.payload` or logged. Downstream stages can resolve the
+      // driver via secure lookup tables when needed.
+    });
+
+    return {
+      kind: 'event',
+      command: {
+        // Property 3 / Requirement 2.1 — tenant scope flows from ctx, never
+        // from the untrusted external payload.
+        organizationId: ctx.organizationId,
+        tripId,
+        eventType,
+        source: TripEventSource.CUA_KHAU_SO,
+        sourceRef: sourceReference,
+        idempotencyKey,
+        occurredAt,
+        payload: normalizedPayload,
+        actor: { kind: 'integration', id: ctx.integrationAccountId }
+      }
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Legacy declaration-shape mapping API (kept for `CuaKhauSoService`).
+  // -------------------------------------------------------------------------
+
   mapListResponse(response: CuaKhauSoDeclarationListResponse): CuaKhauSoMappedList {
     const listData = this.resolveListData(response);
 
@@ -1145,5 +1315,141 @@ export class CuaKhauSoMapper {
 
     const trimmed = String(value).trim();
     return trimmed || undefined;
+  }
+
+  // -------------------------------------------------------------------------
+  // Helpers for the new ProviderAdapter `map()` contract.
+  // -------------------------------------------------------------------------
+
+  private buildCksSourceReference(payload: CksPayload | null | undefined): string {
+    const declarationNumber =
+      typeof payload?.declarationNumber === 'string' && payload.declarationNumber.trim().length > 0
+        ? payload.declarationNumber.trim()
+        : 'unknown';
+    const lineId =
+      typeof payload?.lineId === 'string' && payload.lineId.trim().length > 0
+        ? payload.lineId.trim()
+        : 'unknown';
+    return `${declarationNumber}|${lineId}`;
+  }
+
+  private requireNonEmptyString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  }
+
+  private parseOccurredAt(value: string | Date | null | undefined): Date | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      return null;
+    }
+
+    const date = this.toDate(trimmed);
+    return date ?? null;
+  }
+
+  /**
+   * Map a CKS source-side status string to a domain `TripEventType`. Unknown
+   * statuses fall back to `BORDER_GATE_ENTRY_CONFIRMED` (the most common
+   * neutral progression event) so a malformed-but-otherwise-valid record
+   * still produces a usable command. The full mapping table lives next to
+   * `CuaKhauSoMapper.buildEventCandidates` for the legacy declaration API.
+   */
+  private mapStatusToEventType(status: string | null | undefined): TripEventType {
+    const trimmed = this.requireNonEmptyString(status);
+    if (!trimmed) {
+      return TripEventType.BORDER_GATE_ENTRY_CONFIRMED;
+    }
+
+    switch (trimmed.toUpperCase()) {
+      case 'WAITING':
+        return TripEventType.WAITING_YARD_ENTRY;
+      case 'IN_YARD':
+        return TripEventType.YARD_ENTRY_CONFIRMED;
+      case 'AT_BORDER_GATE':
+        return TripEventType.BORDER_GATE_ENTRY_CONFIRMED;
+      case 'CUSTOMS_PROCESSING':
+        return TripEventType.CUSTOMS_PROCESSING;
+      case 'INSPECTION_REQUIRED':
+        return TripEventType.INSPECTION_REQUIRED;
+      case 'COMPLETED':
+        return TripEventType.BORDER_GATE_EXIT_CONFIRMED;
+      default:
+        return TripEventType.BORDER_GATE_ENTRY_CONFIRMED;
+    }
+  }
+
+  private buildNormalizedCksPayload(input: {
+    declarationNumber: string;
+    lineId: string;
+    licencePlateVNTQ: string;
+    licencePlateChange: string | undefined;
+    trailerNumber: string | undefined;
+    driverName: string | undefined;
+    loadDueToOwnWeight: number | undefined;
+    unloadingPlace: string | undefined;
+    bpConfirmAt: string | undefined;
+    hqConfirmAt: string | undefined;
+    status: string | undefined;
+    rawProviderId: string | undefined;
+    occurredAt: Date;
+  }): Prisma.InputJsonValue {
+    const payload: Record<string, unknown> = {
+      declarationNumber: input.declarationNumber,
+      lineId: input.lineId,
+      // Per integration rules: `licencePlateVNTQ` → main vehicle plate.
+      mainVehiclePlate: input.licencePlateVNTQ,
+      occurredAt: input.occurredAt.toISOString()
+    };
+
+    // `licencePlateChange` → transshipment vehicle plate.
+    if (input.licencePlateChange) {
+      payload.transshipmentVehiclePlate = input.licencePlateChange;
+    }
+    // `numberOfMooc` / `numberOfTrailer` → trailer number.
+    if (input.trailerNumber) {
+      payload.trailerNumber = input.trailerNumber;
+    }
+    if (input.driverName) {
+      payload.driverName = input.driverName;
+    }
+    // `loadDueToOwnWeight` → weight metric.
+    if (input.loadDueToOwnWeight !== undefined) {
+      payload.weightKg = input.loadDueToOwnWeight;
+    }
+    // `unloadingPlace` → unloading location.
+    if (input.unloadingPlace) {
+      payload.unloadingPlace = input.unloadingPlace;
+    }
+    // BP/HQ confirm timestamps → authority timestamps.
+    if (input.bpConfirmAt) {
+      payload.borderGuardConfirmedAt = input.bpConfirmAt;
+    }
+    if (input.hqConfirmAt) {
+      payload.customsConfirmedAt = input.hqConfirmAt;
+    }
+    if (input.status) {
+      payload.sourceStatus = input.status;
+    }
+    if (input.rawProviderId) {
+      payload.rawProviderId = input.rawProviderId;
+    }
+
+    return payload as Prisma.InputJsonValue;
+  }
+
+  private rejectMap(sourceReference: string, reason: RejectionReason): MapResult {
+    return { kind: 'reject', sourceReference, reason };
   }
 }
