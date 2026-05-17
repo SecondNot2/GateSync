@@ -771,35 +771,49 @@ export function toTripSummaryView(trip: ApiTripSummary): OperationsTripSummary {
       Array.isArray(declaration.vehicles) &&
       declaration.vehicles.length > 0
     ) {
+      const isExport = trip.direction === 'EXPORT';
+      const targetNationality = isExport ? 'VN' : 'CN';
       const v =
-        declaration.vehicles.find((vehicle) => vehicle.nationality?.toUpperCase() === 'CN') ??
-        declaration.vehicles[0];
+        declaration.vehicles.find(
+          (vehicle) => vehicle.nationality?.toUpperCase() === targetNationality
+        ) ?? declaration.vehicles[0];
+
       if (v?.trailerNumber && !isPlaceholder(v.trailerNumber)) {
         summary.trailerNumber = v.trailerNumber;
       } else if (!summary.trailerNumber && v?.trailerNumber) {
         summary.trailerNumber = v.trailerNumber;
       }
 
-      if (
-        v?.plateNumber &&
-        !isPlaceholder(v.plateNumber) &&
-        (isPlaceholder(summary.vehicle.plateNumber) ||
-          summary.vehicle.plateNumber === 'Chưa gán xe')
-      ) {
-        summary.vehicle.plateNumber = v.plateNumber as string;
+      if (v?.plateNumber && !isPlaceholder(v.plateNumber)) {
+        if (
+          isExport ||
+          isPlaceholder(summary.vehicle.plateNumber) ||
+          summary.vehicle.plateNumber === 'Chưa gán xe'
+        ) {
+          summary.vehicle.plateNumber = v.plateNumber as string;
+        }
       }
-      if (
-        v?.driverName &&
-        !isPlaceholder(v.driverName) &&
-        (isPlaceholder(summary.driver.name) || summary.driver.name === 'Chưa gán tài xế')
-      ) {
-        summary.driver.name = v.driverName as string;
+      if (v?.driverName && !isPlaceholder(v.driverName)) {
+        if (
+          isExport ||
+          isPlaceholder(summary.driver.name) ||
+          summary.driver.name === 'Chưa gán tài xế'
+        ) {
+          summary.driver.name = v.driverName as string;
+        }
+      }
+      if (v?.phoneNumber && !isPlaceholder(v.phoneNumber)) {
+        if (isExport || isPlaceholder(summary.driver.phone)) {
+          summary.driver.phone = v.phoneNumber;
+        }
       }
     } else {
+      const isExportNoVehicles = trip.direction === 'EXPORT';
       if (
         declaration.plateNumber &&
         !isPlaceholder(declaration.plateNumber) &&
-        (isPlaceholder(summary.vehicle.plateNumber) ||
+        (isExportNoVehicles ||
+          isPlaceholder(summary.vehicle.plateNumber) ||
           summary.vehicle.plateNumber === 'Chưa gán xe')
       ) {
         summary.vehicle.plateNumber = declaration.plateNumber;
@@ -988,7 +1002,6 @@ function toCuaKhauSoDeclarationView(
       }))
     })),
     vehicles: (declaration.vehicles ?? [])
-      .filter((vehicle) => vehicle.nationality?.toUpperCase() === 'CN')
       .map((vehicle, index) => ({
         id: vehicle.id ?? `vehicle-${index}`,
         plateNumber: vehicle.plateNumber,

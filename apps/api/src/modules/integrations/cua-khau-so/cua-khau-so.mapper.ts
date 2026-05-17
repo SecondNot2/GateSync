@@ -473,11 +473,15 @@ export class CuaKhauSoMapper {
   }
 
   private mapVehicles(detail: CuaKhauSoDeclarationDetail) {
-    return (detail.registrationTransportDetails ?? [])
-      .filter(
-        (vehicle) => this.trimToUndefined(vehicle.vehicleNationalityType)?.toUpperCase() === 'CN'
-      )
-      .map((vehicle) => this.mapVehicle(vehicle, detail));
+    const direction = this.mapDirection(detail.type);
+    const targetNationality = direction === 'EXPORT' ? 'VN' : 'CN';
+    const vehicles = detail.registrationTransportDetails ?? [];
+    const filtered = vehicles.filter(
+      (vehicle) =>
+        this.trimToUndefined(vehicle.vehicleNationalityType)?.toUpperCase() === targetNationality
+    );
+    const source = filtered.length > 0 ? filtered : vehicles;
+    return source.map((vehicle) => this.mapVehicle(vehicle, detail));
   }
 
   private mapVehicle(vehicle: CuaKhauSoVehicleDetail, detail: CuaKhauSoDeclarationDetail) {

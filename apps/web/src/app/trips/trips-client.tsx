@@ -389,8 +389,7 @@ export function TripsClient({
       {!organizationIssue ? (
         <>
           <section className="rounded-[1.75rem] border border-slate-200 bg-white/95 p-3 shadow-soft sm:p-4">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <QuickFilterLinks filters={filters} />
+            <div className="flex items-center justify-end">
               <p className="text-xs font-semibold text-slate-500">
                 {activeFilterCount > 0
                   ? `${activeFilterCount} bộ lọc đang áp dụng`
@@ -610,7 +609,8 @@ function TripsList({
 }) {
   return (
     <div className="mt-5 overflow-hidden rounded-3xl border border-slate-100">
-      <div className="hidden grid-cols-[1fr_1fr_0.9fr_1fr_0.75fr_0.85fr] gap-4 bg-slate-950 px-5 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300 xl:grid">
+      <div className="hidden grid-cols-[0.35fr_1fr_1fr_0.9fr_1fr_0.75fr_0.85fr] gap-4 bg-slate-950 px-5 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300 xl:grid">
+        <span>STT</span>
         <span>Chuyến</span>
         <span>Phương tiện & tài xế</span>
         <span>Doanh nghiệp hàng hóa</span>
@@ -619,12 +619,15 @@ function TripsList({
         <span>Ưu tiên</span>
       </div>
       <div className="divide-y divide-slate-100 bg-white">
-        {trips.map((trip) => (
+        {trips.map((trip, index) => (
           <Link
             key={trip.id}
             href={`/trips/${trip.id}`}
-            className="grid gap-4 px-4 py-5 transition hover:bg-sky-50/60 sm:px-5 xl:grid-cols-[1fr_1fr_0.9fr_1fr_0.75fr_0.85fr] xl:items-center"
+            className="grid gap-4 px-4 py-5 transition hover:bg-sky-50/60 sm:px-5 xl:grid-cols-[0.35fr_1fr_1fr_0.9fr_1fr_0.75fr_0.85fr] xl:items-center"
           >
+            <div className="hidden text-center text-sm font-bold text-slate-600 xl:block">
+              {index + 1}
+            </div>
             <div>
               <div className="flex flex-wrap items-center gap-2 xl:block">
                 <p className="font-semibold text-slate-950">{trip.tripCode}</p>
@@ -759,57 +762,7 @@ function DeclarationSignal({
   );
 }
 
-function QuickFilterLinks({ filters }: { filters: ListTripsParams }) {
-  const quickFilters: Array<{
-    label: string;
-    href: string;
-    active: boolean;
-  }> = [
-    {
-      label: 'Cần xử lý',
-      href: '/trips?exception=ATTENTION',
-      active: filters.exception === 'ATTENTION'
-    },
-    {
-      label: 'Đang chậm',
-      href: '/trips?exception=DELAYED',
-      active: filters.exception === 'DELAYED'
-    },
-    {
-      label: 'Chờ bãi',
-      href: '/trips?status=WAITING_YARD_ENTRY',
-      active: filters.status === 'WAITING_YARD_ENTRY'
-    },
-    {
-      label: 'Cần kiểm hóa',
-      href: '/trips?exception=INSPECTION',
-      active: filters.exception === 'INSPECTION'
-    }
-  ];
 
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-        Bộ lọc nhanh
-      </p>
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-        {quickFilters.map((filter) => (
-          <Link
-            key={filter.href}
-            href={filter.href}
-            className={`min-h-11 shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${
-              filter.active
-                ? 'bg-slate-950 text-white'
-                : 'border border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:text-sky-700'
-            }`}
-          >
-            {filter.label}
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function FilterSummary({
   label,

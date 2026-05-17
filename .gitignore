@@ -13,6 +13,7 @@ build/
 coverage/
 .turbo/
 .vercel/
+.vscode/
 
 *.log
 *.tsbuildinfo
