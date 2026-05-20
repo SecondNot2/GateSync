@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuthModule } from '../auth/auth.module';
 import { IntegrationSyncQueueModule } from '../integrations/integration-sync-queue.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -9,7 +10,13 @@ import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
 
 @Module({
-  imports: [AuthModule, IntegrationSyncQueueModule, NotificationsModule, PrismaModule],
+  imports: [
+    AuthModule,
+    EventEmitterModule.forRoot(),
+    IntegrationSyncQueueModule,
+    NotificationsModule,
+    PrismaModule
+  ],
   controllers: [TripsController],
   providers: [TripsService, TripOperationsService, TripStateTransitionService],
   exports: [TripsService]

@@ -1,8 +1,9 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { NotificationChannel, Prisma } from '@prisma/client';
+import type { MembershipRole, NotificationChannel, Prisma } from '@prisma/client';
 import type { RequestUser } from '../auth/request-user';
 import { PrismaService } from '../prisma/prisma.service';
+import type { ListNotificationsQueryDto } from './dto/list-notifications-query.dto';
 
 type PrismaExecutor = Prisma.TransactionClient | PrismaService;
 
@@ -71,6 +72,30 @@ const driverRecipientEventTypes = [
 
 const supportedChannels = ['IN_APP', 'WEB_PUSH', 'ZALO_OA', 'SMS', 'EMAIL'] as const;
 
+const ADMIN_ROLES: readonly MembershipRole[] = ['OWNER', 'ADMIN'];
+
+const DEFAULT_PAGE_SIZE = 50;
+
+const NOTIFICATION_DETAIL_INCLUDE = {
+  trip: {
+    select: {
+      id: true,
+      tripCode: true,
+      currentStatus: true,
+      vehicle: true,
+      driverProfile: true,
+      customsDeclaration: true
+    }
+  },
+  organization: {
+    select: {
+      id: true,
+      name: true,
+      type: true
+    }
+  }
+} satisfies Prisma.NotificationInclude;
+
 @Injectable()
 export class NotificationsService {
   constructor(
@@ -108,6 +133,184 @@ export class NotificationsService {
       },
       take: 50
     });
+  }
+
+  /**
+   * `GET /api/v1/notifications` (Requirements 11.1, 11.2, 11.3).
+   *
+   * - **Admin caller** (`OWNER` / `ADMIN` membership of an organization):
+   *   returns every `Notification` row for that organization, regardless of
+   *   `recipientUserId`. Tenant scope is taken from the admin's resolved
+   *   membership; the caller cannot influence it.
+   * - **Non-admin caller**: returns only rows where `recipientUserId = user.id`.
+   *   No `organizationId` filter is applied because a user may have multiple
+   *   memberships and should see their inbox across all of them.
+   *
+   * Filters: `eventType` (matched against `payload.eventType` JSON field),
+   * `channel`, `status`, time range (`from` / `to` on `createdAt`). Sorted by
+   * `createdAt DESC, id DESC`. Cursor-based pagination keyed by `id`.
+   */
+  async listNotifications(user: RequestUser, query: ListNotificationsQueryDto) {
+    const take = query.limit ?? DEFAULT_PAGE_SIZE;
+    const adminMembership = user.memberships.find(
+      (membership) =>
+        membership.status === 'ACTIVE' && ADMIN_ROLES.some((role) => role === membership.role)
+    );
+
+    const where: Prisma.NotificationWhereInput = adminMembership
+      ? { organizationId: adminMembership.organizationId }
+      : { recipientUserId: user.id };
+
+    if (query.channel) {
+      where.channel = query.channel;
+    }
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (query.from || query.to || query.after) {
+      where.createdAt = {};
+      if (query.from) {
+        where.createdAt.gte = query.from;
+      }
+      if (query.to) {
+        where.createdAt.lte = query.to;
+      }
+      if (query.after) {
+        // `after` is the legacy "strictly newer than" filter used by the web
+        // client for incremental polling. It is independent of `from`/`to`
+        // and applied as a `gt` bound on `createdAt`.
+        where.createdAt.gt = query.after;
+      }
+    }
+
+    if (query.eventType) {
+      // The orchestrator stores the notification eventType inside the JSON
+      // `payload`. Use Prisma's `path` filter so the filter survives
+      // payload-shape evolution as long as the `eventType` key is present.
+      where.payload = {
+        path: ['eventType'],
+        equals: query.eventType
+      };
+    }
+
+    const findArgs: Prisma.NotificationFindManyArgs = {
+      where,
+      include: NOTIFICATION_DETAIL_INCLUDE,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take
+    };
+
+    if (query.cursor) {
+      findArgs.skip = 1;
+      findArgs.cursor = { id: query.cursor };
+    }
+
+    const rows = await this.prisma.notification.findMany(findArgs);
+    const lastRow = rows.length === take ? rows[rows.length - 1] : undefined;
+    const nextCursor = lastRow?.id ?? null;
+
+    return {
+      data: rows,
+      nextCursor
+    };
+  }
+
+  /**
+   * `GET /api/v1/notifications/:id` (Requirements 11.1, 11.2, 11.3).
+   *
+   * Returns the full notification record after enforcing access:
+   *
+   *  - The caller must be the `recipientUserId` OR an active admin
+   *    (`OWNER` / `ADMIN`) of the notification's organization.
+   *  - If the notification references a `tripId`, the caller must additionally
+   *    have access to that trip — either because they are an admin in the
+   *    organization, or because they are a `TripParticipant` on that trip.
+   *
+   * Anything else maps to `FORBIDDEN`. A row that does not exist at all maps
+   * to `NOT_FOUND`. Tenant existence is never leaked: a notification belonging
+   * to another organization that the caller has no relationship with also
+   * surfaces as `NOT_FOUND` so probing for ids cannot enumerate other orgs.
+   */
+  async getNotificationDetail(user: RequestUser, notificationId: string) {
+    const notification = await this.prisma.notification.findUnique({
+      where: { id: notificationId },
+      include: NOTIFICATION_DETAIL_INCLUDE
+    });
+
+    if (!notification) {
+      throw new NotFoundException('Không tìm thấy thông báo.');
+    }
+
+    const isRecipient =
+      notification.recipientUserId !== null && notification.recipientUserId === user.id;
+
+    const adminMembershipForOrg = user.memberships.find(
+      (membership) =>
+        membership.organizationId === notification.organizationId &&
+        membership.status === 'ACTIVE' &&
+        ADMIN_ROLES.some((role) => role === membership.role)
+    );
+
+    if (!isRecipient && !adminMembershipForOrg) {
+      // Hide cross-tenant existence: callers with no relationship to the
+      // notification's organization should not be able to distinguish
+      // "wrong tenant" from "wrong id".
+      const hasAnyMembershipInOrg = user.memberships.some(
+        (membership) =>
+          membership.organizationId === notification.organizationId &&
+          membership.status === 'ACTIVE'
+      );
+      if (!hasAnyMembershipInOrg) {
+        throw new NotFoundException('Không tìm thấy thông báo.');
+      }
+      throw new ForbiddenException('Bạn không có quyền xem thông báo này.');
+    }
+
+    if (notification.tripId) {
+      const hasTripAccess =
+        adminMembershipForOrg !== undefined ||
+        (await this.canAccessTrip(user.id, notification.tripId, notification.organizationId));
+
+      if (!hasTripAccess) {
+        throw new ForbiddenException(
+          'Bạn không có quyền xem chuyến hàng liên quan đến thông báo này.'
+        );
+      }
+    }
+
+    return notification;
+  }
+
+  /**
+   * Returns `true` when `userId` has trip-level access to `tripId` within
+   * `organizationId` via a `TripParticipant` row. Used by
+   * {@link getNotificationDetail} to gate access to trip-bound notifications
+   * for non-admin recipients (e.g. a `custom_user_list` recipient who is a
+   * peer in the organization but not on the trip).
+   */
+  private async canAccessTrip(
+    userId: string,
+    tripId: string,
+    organizationId: string
+  ): Promise<boolean> {
+    const participant = await this.prisma.tripParticipant.findFirst({
+      where: {
+        tripId,
+        userId,
+        OR: [
+          { organizationId },
+          // Cross-org partner participation rows may have a null
+          // `organizationId`; allow those through since the participant
+          // row itself authorizes access.
+          { organizationId: null }
+        ]
+      },
+      select: { id: true }
+    });
+
+    return participant !== null;
   }
 
   async markRead(user: RequestUser, notificationId: string) {

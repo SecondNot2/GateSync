@@ -78,6 +78,8 @@ export const apiClient = {
     request<TData>(path, { method: 'GET' }, options),
   post: <TData>(path: string, body: unknown, options?: RequestOptions) =>
     request<TData>(path, { method: 'POST', body: JSON.stringify(body) }, options),
+  put: <TData>(path: string, body: unknown, options?: RequestOptions) =>
+    request<TData>(path, { method: 'PUT', body: JSON.stringify(body) }, options),
   patch: <TData>(path: string, body: unknown, options?: RequestOptions) =>
     request<TData>(path, { method: 'PATCH', body: JSON.stringify(body) }, options),
   delete: <TData>(path: string, options?: RequestOptions) =>

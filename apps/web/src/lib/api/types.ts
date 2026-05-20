@@ -2,7 +2,6 @@ import type {
   MembershipRole,
   MembershipInvitationStatus,
   MembershipStatus,
-  IntegrationSyncRunStatus,
   NotificationChannel,
   OrganizationType,
   OwnershipType,
@@ -295,6 +294,78 @@ export type ApiNotification = {
   organization?: Pick<ApiOrganization, 'id' | 'name' | 'type'> | null;
 };
 
+/**
+ * Cursor-paginated response shape for `GET /api/v1/notifications`.
+ *
+ * `nextCursor` is the `id` of the last row on the current page, or `null`
+ * when the caller has reached the end of the inbox. Pass it back as the
+ * `cursor` query param to load the next page (see `gatesyncApi.listNotificationsPage`).
+ */
+export type ApiNotificationListPage = {
+  data: ApiNotification[];
+  nextCursor: string | null;
+};
+
+/**
+ * Optional filters supported by `GET /api/v1/notifications`.
+ *
+ * All filters are server-side; this type intentionally omits `organizationId`
+ * since the backend derives tenant scope from the authenticated user.
+ */
+export type ListNotificationsParams = {
+  cursor?: string;
+  limit?: number;
+  channel?: NotificationChannel;
+  status?: ApiNotificationStatus;
+  eventType?: string;
+  after?: string;
+};
+
+export type ApiNotificationPreference = {
+  id: string;
+  userId: string;
+  organizationId: string;
+  eventType: string;
+  channel: NotificationChannel;
+  enabled: boolean;
+  updatedAt?: string;
+};
+
+export type NotificationPreferenceItemPayload = {
+  eventType: string;
+  channel: NotificationChannel;
+  enabled: boolean;
+};
+
+export type UpsertNotificationPreferencesPayload = {
+  organizationId: string;
+  userId?: string;
+  preferences: NotificationPreferenceItemPayload[];
+};
+
+/**
+ * Server representation of a `NotificationRule` row.
+ *
+ * Matches the JSON shape returned by `/api/v1/notification-rules` (see
+ * `apps/api/src/modules/notifications/rules/notification-rules.controller.ts`).
+ * `recipientScope` is a string at the API boundary; the editor narrows it to
+ * the shared `NotificationRuleRecipientScope` union.
+ */
+export type ApiNotificationRule = {
+  id: string;
+  organizationId: string;
+  name: string;
+  eventType: string;
+  channels: NotificationChannel[];
+  recipientScope: string;
+  customUserIds: string[];
+  mandatory: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+};
+
 export type ApiDashboardSummary = {
   generatedAt: string;
   metrics: {
@@ -585,11 +656,20 @@ export type ApiCuaKhauSoSyncResult = {
   lastSyncAt: string;
 };
 
+export type ApiIntegrationSyncRunStatus =
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'RETRYING'
+  | 'SUCCEEDED'
+  | 'PARTIAL'
+  | 'FAILED'
+  | 'TIMEOUT';
+
 export type ApiIntegrationSyncRun = {
   id: string;
   organizationId: string;
   integrationAccountId: string;
-  status: IntegrationSyncRunStatus;
+  status: ApiIntegrationSyncRunStatus;
   mode: 'AUTO' | 'MANUAL' | 'REFRESH_ON_OPEN';
   startedAt: string;
   finishedAt?: string | null;
@@ -597,8 +677,35 @@ export type ApiIntegrationSyncRun = {
   detailsFetched: number;
   eventsCreated: number;
   eventsSkipped: number;
+  recordsRejected?: number;
+  errorCode?: string | null;
   errorMessage?: string | null;
+  httpStatus?: number | null;
+  attemptIndex?: number;
+  attemptGroupId?: string;
+  nextRetryAt?: string | null;
   metadata?: Record<string, unknown> | null;
+  integrationAccount?: {
+    id: string;
+    provider: string;
+    accountName?: string | null;
+    label?: string | null;
+  } | null;
+};
+
+export type ApiIntegrationSyncRunsPage = {
+  data: ApiIntegrationSyncRun[];
+  nextCursor: string | null;
+};
+
+export type ListIntegrationSyncRunsParams = {
+  limit?: number;
+  cursor?: string;
+  provider?: string;
+  integrationAccountId?: string;
+  status?: ApiIntegrationSyncRunStatus;
+  from?: string;
+  to?: string;
 };
 
 export type ApiCuaKhauSoSyncRunResult = {

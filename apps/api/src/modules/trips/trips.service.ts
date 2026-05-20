@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { RequestUser } from '../auth/request-user';
@@ -15,14 +16,35 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateTripEventDto } from './dto/create-trip-event.dto';
 import type { CreateTripDto } from './dto/create-trip.dto';
 import type { ListTripsQueryDto } from './dto/list-trips-query.dto';
+import type { TripEventCommand } from '../integrations/adapters/provider-adapter';
 import { TripOperationsService } from './trip-operations.service';
 import { TripStateTransitionService } from './trip-state-transition.service';
+import {
+  TRIP_DOMAIN_EVENT,
+  type TripDomainEvent,
+  type TripDomainEventActor
+} from './trip-domain-event';
 
 type PrismaExecutor = Prisma.TransactionClient | PrismaService;
 type DriverProfileReference = {
   id: string;
   userId: string | null;
 };
+
+/** Snapshot of a `TripEvent` row inserted by {@link TripsService.applyCommands}. */
+export interface ApplyCommandsCommittedEvent {
+  command: TripEventCommand;
+  event: { id: string; tripId: string; organizationId: string };
+  wasCreated: true;
+}
+
+/** Aggregate counters and committed event metadata returned by {@link TripsService.applyCommands}. */
+export interface ApplyCommandsResult {
+  committedEvents: ApplyCommandsCommittedEvent[];
+  eventsCreated: number;
+  eventsSkipped: number;
+  recordsRejected: number;
+}
 type TripSourceSummary = {
   provider: 'CUA_KHAU_SO';
   declarationNumber?: string;
@@ -218,7 +240,8 @@ export class TripsService {
     @Inject(IntegrationSyncQueueService) private readonly syncQueue: IntegrationSyncQueueService,
     @Inject(OperationsCacheService) private readonly cache: OperationsCacheService,
     @Inject(TripOperationsService) private readonly operations: TripOperationsService,
-    @Inject(TripStateTransitionService) private readonly transitions: TripStateTransitionService
+    @Inject(TripStateTransitionService) private readonly transitions: TripStateTransitionService,
+    @Inject(EventEmitter2) private readonly eventEmitter: EventEmitter2
   ) {}
 
   async listTrips(organizationId: string, query: ListTripsQueryDto) {
@@ -963,6 +986,223 @@ export class TripsService {
     return this.createEventForActor(undefined, organizationId, tripId, dto, idempotencyKeyHeader);
   }
 
+  /**
+   * Applies a batch of normalized {@link TripEventCommand}s produced by an
+   * integration provider adapter under a single Prisma transaction.
+   *
+   * Per Requirements 2.3, 2.4, 2.6, 2.7 and 5.4 this method:
+   *  - Looks up existing rows by the composite `(organizationId, idempotencyKey)`
+   *    unique key (schema task 1.4).
+   *  - Inserts the event and increments `eventsCreated` on the supplied
+   *    `IntegrationSyncRun`, or skips and increments `eventsSkipped` when the
+   *    key already exists.
+   *  - Catches Prisma `P2002` unique-constraint violations as a fallback to
+   *    the skip path so concurrent workers cannot duplicate rows.
+   *  - Persists the supplied `recordsRejected` delta on the same run inside
+   *    the same transaction, preserving the invariant
+   *    `recordsFetched = eventsCreated + eventsSkipped + recordsRejected`.
+   *  - Sets `TripEvent.isCorrection` from `command.isCorrection` (default
+   *    false) so downstream notification orchestration (task 6.2) can
+   *    suppress correction events.
+   *
+   * The committed events are returned together with the updated counters so
+   * task 6.2 can wire a post-commit `TripDomainEvent` emission hook on top of
+   * this method without changing the transactional core.
+   */
+  async applyCommands(
+    commands: TripEventCommand[],
+    syncRun: { id: string; recordsFetched?: number; recordsRejected?: number }
+  ): Promise<ApplyCommandsResult> {
+    const recordsRejectedDelta = syncRun.recordsRejected ?? 0;
+
+    if (commands.length === 0 && recordsRejectedDelta === 0) {
+      return {
+        committedEvents: [],
+        eventsCreated: 0,
+        eventsSkipped: 0,
+        recordsRejected: 0
+      };
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const committedEvents: ApplyCommandsCommittedEvent[] = [];
+      let eventsCreated = 0;
+      let eventsSkipped = 0;
+
+      for (const command of commands) {
+        const outcome = await this.applyCommandWithinTx(tx, command);
+
+        if (outcome.kind === 'created') {
+          eventsCreated += 1;
+          committedEvents.push({
+            command,
+            event: outcome.event,
+            wasCreated: true
+          });
+        } else {
+          eventsSkipped += 1;
+        }
+      }
+
+      const counterUpdates: Prisma.IntegrationSyncRunUpdateInput = {};
+
+      if (eventsCreated > 0) {
+        counterUpdates.eventsCreated = { increment: eventsCreated };
+      }
+
+      if (eventsSkipped > 0) {
+        counterUpdates.eventsSkipped = { increment: eventsSkipped };
+      }
+
+      if (recordsRejectedDelta > 0) {
+        counterUpdates.recordsRejected = { increment: recordsRejectedDelta };
+      }
+
+      if (Object.keys(counterUpdates).length > 0) {
+        await tx.integrationSyncRun.update({
+          where: { id: syncRun.id },
+          data: counterUpdates
+        });
+      }
+
+      return {
+        committedEvents,
+        eventsCreated,
+        eventsSkipped,
+        recordsRejected: recordsRejectedDelta
+      } satisfies ApplyCommandsResult;
+    });
+
+    // Post-commit emission of `TripDomainEvent` per Requirements 5.1, 5.5
+    // (task 6.2). Subscribers (e.g. the upcoming `NotificationOrchestrator`)
+    // only observe persisted rows because emission happens *after* the
+    // surrounding `prisma.$transaction` resolves. Correction events are
+    // suppressed at the publisher per Requirement 5.4.
+    for (const entry of result.committedEvents) {
+      this.emitTripDomainEvent(entry.command, entry.event.id);
+    }
+
+    if (result.committedEvents.length > 0) {
+      const organizationIds = new Set(
+        result.committedEvents.map((entry) => entry.command.organizationId)
+      );
+      for (const organizationId of organizationIds) {
+        this.cache.invalidateTripReadModels(organizationId);
+      }
+    }
+
+    return result;
+  }
+
+  private async applyCommandWithinTx(
+    tx: Prisma.TransactionClient,
+    command: TripEventCommand
+  ): Promise<
+    | { kind: 'created'; event: { id: string; tripId: string; organizationId: string } }
+    | { kind: 'skipped'; reason: 'duplicate' }
+  > {
+    const existing = await tx.tripEvent.findUnique({
+      where: {
+        organizationId_idempotencyKey: {
+          organizationId: command.organizationId,
+          idempotencyKey: command.idempotencyKey
+        }
+      },
+      select: { id: true, tripId: true, organizationId: true }
+    });
+
+    if (existing) {
+      return { kind: 'skipped', reason: 'duplicate' };
+    }
+
+    const data: Prisma.TripEventUncheckedCreateInput = {
+      tripId: command.tripId,
+      organizationId: command.organizationId,
+      eventType: command.eventType,
+      eventStatus: 'RECORDED',
+      source: command.source,
+      occurredAt: command.occurredAt,
+      idempotencyKey: command.idempotencyKey,
+      isCorrection: command.isCorrection ?? false
+    };
+
+    if (command.sourceRef) {
+      data.sourceRef = command.sourceRef;
+    }
+
+    if (command.payload !== undefined) {
+      data.rawPayload = command.payload;
+    }
+
+    try {
+      const event = await tx.tripEvent.create({
+        data,
+        select: { id: true, tripId: true, organizationId: true }
+      });
+
+      return { kind: 'created', event };
+    } catch (error) {
+      // Race with a concurrent worker that inserted the same idempotency key
+      // between the lookup above and our insert. Per Requirement 2.6 we MUST
+      // fall through to the skip path rather than fail the batch.
+      if (this.isUniqueConstraintError(error, 'idempotencyKey')) {
+        return { kind: 'skipped', reason: 'duplicate' };
+      }
+
+      throw error;
+    }
+  }
+
+  private emitTripDomainEvent(command: TripEventCommand, eventId: string) {
+    if (command.isCorrection === true) {
+      return;
+    }
+
+    const actor: TripDomainEventActor = command.actor
+      ? { kind: command.actor.kind, ...(command.actor.id ? { id: command.actor.id } : {}) }
+      : { kind: 'system' };
+
+    const payload: TripDomainEvent = {
+      eventId,
+      organizationId: command.organizationId,
+      tripId: command.tripId,
+      eventType: command.eventType,
+      occurredAt: command.occurredAt,
+      source: command.source,
+      actor,
+      isCorrection: command.isCorrection ?? false
+    };
+
+    this.eventEmitter.emit(TRIP_DOMAIN_EVENT, payload);
+  }
+
+  private emitTripDomainEventForManualFlow(
+    user: RequestUser | undefined,
+    organizationId: string,
+    tripId: string,
+    event: {
+      id: string;
+      eventType: TripEventCommand['eventType'];
+      source: TripEventCommand['source'];
+      occurredAt: Date;
+    }
+  ) {
+    const actor: TripDomainEventActor = user ? { kind: 'user', id: user.id } : { kind: 'system' };
+
+    const payload: TripDomainEvent = {
+      eventId: event.id,
+      organizationId,
+      tripId,
+      eventType: event.eventType,
+      occurredAt: event.occurredAt,
+      source: event.source,
+      actor,
+      isCorrection: false
+    };
+
+    this.eventEmitter.emit(TRIP_DOMAIN_EVENT, payload);
+  }
+
   private async createEventForActor(
     user: RequestUser | undefined,
     organizationId: string,
@@ -979,7 +1219,10 @@ export class TripsService {
     if (idempotencyKey) {
       const existingEvent = await this.prisma.tripEvent.findUnique({
         where: {
-          idempotencyKey
+          organizationId_idempotencyKey: {
+            organizationId,
+            idempotencyKey
+          }
         },
         select: tripEventPublicSelect
       });
@@ -1050,12 +1293,24 @@ export class TripsService {
       void this.notifications.broadcastTripEventSignal(organizationId, tripId, event.eventType);
       this.enqueueCuaKhauSoSyncForEvent(organizationId, event.eventType);
 
+      // Mirror the AUTO SYNC pipeline so the `NotificationOrchestrator` (and
+      // any other subscriber) observes a uniform stream of domain events for
+      // manual operator updates and driver-app submissions
+      // (Requirements 5.1, 5.5). The DTO does not currently expose
+      // `isCorrection`, so manual flows are non-corrections by definition;
+      // the suppression branch is retained for forward compatibility when
+      // correction submissions are added.
+      this.emitTripDomainEventForManualFlow(user, organizationId, tripId, event);
+
       return event;
     } catch (error) {
       if (idempotencyKey && this.isUniqueConstraintError(error, 'idempotencyKey')) {
         const existingEvent = await this.prisma.tripEvent.findUnique({
           where: {
-            idempotencyKey
+            organizationId_idempotencyKey: {
+              organizationId,
+              idempotencyKey
+            }
           },
           select: tripEventPublicSelect
         });

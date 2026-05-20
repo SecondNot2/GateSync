@@ -186,10 +186,13 @@ enum NotificationChannel {
 }
 
 enum IntegrationSyncRunStatus {
+  QUEUED
   RUNNING
+  RETRYING
   SUCCEEDED
   FAILED
   PARTIAL
+  TIMEOUT
 }
 
 enum TripMediaType {
@@ -202,9 +205,11 @@ enum TripMediaType {
 
 enum NotificationStatus {
   PENDING
+  PENDING_IN_APP
   SENT
   FAILED
   READ
+  HIDDEN
 }
 
 enum DeclarationType {
@@ -223,33 +228,33 @@ enum DeclarationStatus {
 }
 
 model Organization {
-  id                   String               @id @default(uuid()) @db.Uuid
-  name                 String
-  type                 OrganizationType     @default(LOGISTICS_COMPANY)
-  taxCode              String?
-  phone                String?
-  email                String?
-  address              String?
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  deletedAt            DateTime?
-  deletedById          String?              @db.Uuid
-  memberships          Membership[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  name                  String
+  type                  OrganizationType       @default(LOGISTICS_COMPANY)
+  taxCode               String?
+  phone                 String?
+  email                 String?
+  address               String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+  deletedById           String?                @db.Uuid
+  memberships           Membership[]
   membershipInvitations MembershipInvitation[]
-  driverProfiles       DriverProfile[]
-  vehicles             Vehicle[]
-  shipments            Shipment[]           @relation("OwningOrganizationShipments")
-  cargoOwnerShipments  Shipment[]           @relation("CargoOwnerShipments")
-  customsDeclarations  CustomsDeclaration[]
-  trips                Trip[]
-  tripParticipants     TripParticipant[]
-  tripEvents           TripEvent[]
-  integrationAccounts  IntegrationAccount[]
-  integrationSyncRuns  IntegrationSyncRun[]
-  notificationRules    NotificationRule[]
-  notifications        Notification[]
-  tripMediaAttachments TripMediaAttachment[]
-  auditLogs            AuditLog[]
+  driverProfiles        DriverProfile[]
+  vehicles              Vehicle[]
+  shipments             Shipment[]             @relation("OwningOrganizationShipments")
+  cargoOwnerShipments   Shipment[]             @relation("CargoOwnerShipments")
+  customsDeclarations   CustomsDeclaration[]
+  trips                 Trip[]
+  tripParticipants      TripParticipant[]
+  tripEvents            TripEvent[]
+  integrationAccounts   IntegrationAccount[]
+  integrationSyncRuns   IntegrationSyncRun[]
+  notificationRules     NotificationRule[]
+  notifications         Notification[]
+  tripMediaAttachments  TripMediaAttachment[]
+  auditLogs             AuditLog[]
 
   @@index([type])
   @@index([taxCode])
@@ -257,25 +262,26 @@ model Organization {
 }
 
 model User {
-  id                 String            @id @default(uuid()) @db.Uuid
-  supabaseUserId     String            @unique
-  fullName           String?
-  phone              String?
-  email              String?           @unique
-  avatarUrl          String?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  memberships        Membership[]
-  createdMembershipInvitations MembershipInvitation[] @relation("MembershipInvitationCreatedBy")
-  acceptedMembershipInvitations MembershipInvitation[] @relation("MembershipInvitationAcceptedBy")
-  revokedMembershipInvitations  MembershipInvitation[] @relation("MembershipInvitationRevokedBy")
-  driverProfile      DriverProfile?
-  createdTrips       Trip[]            @relation("TripCreatedBy")
-  tripParticipants   TripParticipant[]
-  tripEvents         TripEvent[]       @relation("TripEventCreatedBy")
-  uploadedTripMediaAttachments TripMediaAttachment[] @relation("TripMediaAttachmentUploadedBy")
-  notifications      Notification[]
-  auditLogs          AuditLog[]
+  id                            String                   @id @default(uuid()) @db.Uuid
+  supabaseUserId                String                   @unique
+  fullName                      String?
+  phone                         String?
+  email                         String?                  @unique
+  avatarUrl                     String?
+  createdAt                     DateTime                 @default(now())
+  updatedAt                     DateTime                 @updatedAt
+  memberships                   Membership[]
+  createdMembershipInvitations  MembershipInvitation[]   @relation("MembershipInvitationCreatedBy")
+  acceptedMembershipInvitations MembershipInvitation[]   @relation("MembershipInvitationAcceptedBy")
+  revokedMembershipInvitations  MembershipInvitation[]   @relation("MembershipInvitationRevokedBy")
+  driverProfile                 DriverProfile?
+  createdTrips                  Trip[]                   @relation("TripCreatedBy")
+  tripParticipants              TripParticipant[]
+  tripEvents                    TripEvent[]              @relation("TripEventCreatedBy")
+  uploadedTripMediaAttachments  TripMediaAttachment[]    @relation("TripMediaAttachmentUploadedBy")
+  notifications                 Notification[]
+  notificationPreferences       NotificationPreference[]
+  auditLogs                     AuditLog[]
 
   @@index([supabaseUserId])
   @@index([phone])
@@ -283,16 +289,16 @@ model User {
 }
 
 model Membership {
-  id              String             @id @default(uuid()) @db.Uuid
-  organizationId  String             @db.Uuid
-  userId          String             @db.Uuid
-  role            MembershipRole
-  status          MembershipStatus   @default(ACTIVE)
-  createdAt       DateTime           @default(now())
-  deletedAt       DateTime?
-  deletedById     String?            @db.Uuid
-  organization    Organization       @relation(fields: [organizationId], references: [id])
-  user            User               @relation(fields: [userId], references: [id])
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  userId         String           @db.Uuid
+  role           MembershipRole
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  deletedAt      DateTime?
+  deletedById    String?          @db.Uuid
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  user           User             @relation(fields: [userId], references: [id])
 
   @@unique([organizationId, userId])
   @@index([userId, organizationId])
@@ -301,23 +307,23 @@ model Membership {
 }
 
 model MembershipInvitation {
-  id              String                     @id @default(uuid()) @db.Uuid
-  organizationId  String                     @db.Uuid
-  email           String
-  role            MembershipRole
-  codeHash        String                     @unique
-  status          MembershipInvitationStatus @default(PENDING)
-  expiresAt       DateTime
-  acceptedAt      DateTime?
-  acceptedById    String?                    @db.Uuid
-  revokedAt       DateTime?
-  revokedById     String?                    @db.Uuid
-  createdById     String?                    @db.Uuid
-  createdAt       DateTime                   @default(now())
-  organization    Organization               @relation(fields: [organizationId], references: [id])
-  acceptedBy      User?                      @relation("MembershipInvitationAcceptedBy", fields: [acceptedById], references: [id])
-  revokedBy       User?                      @relation("MembershipInvitationRevokedBy", fields: [revokedById], references: [id])
-  createdBy       User?                      @relation("MembershipInvitationCreatedBy", fields: [createdById], references: [id])
+  id             String                     @id @default(uuid()) @db.Uuid
+  organizationId String                     @db.Uuid
+  email          String
+  role           MembershipRole
+  codeHash       String                     @unique
+  status         MembershipInvitationStatus @default(PENDING)
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  acceptedById   String?                    @db.Uuid
+  revokedAt      DateTime?
+  revokedById    String?                    @db.Uuid
+  createdById    String?                    @db.Uuid
+  createdAt      DateTime                   @default(now())
+  organization   Organization               @relation(fields: [organizationId], references: [id])
+  acceptedBy     User?                      @relation("MembershipInvitationAcceptedBy", fields: [acceptedById], references: [id])
+  revokedBy      User?                      @relation("MembershipInvitationRevokedBy", fields: [revokedById], references: [id])
+  createdBy      User?                      @relation("MembershipInvitationCreatedBy", fields: [createdById], references: [id])
 
   @@index([organizationId, status, expiresAt])
   @@index([email, status])
@@ -325,18 +331,18 @@ model MembershipInvitation {
 }
 
 model DriverProfile {
-  id                 String     @id @default(uuid()) @db.Uuid
-  organizationId     String     @db.Uuid
-  userId             String?    @unique @db.Uuid
+  id                 String       @id @default(uuid()) @db.Uuid
+  organizationId     String       @db.Uuid
+  userId             String?      @unique @db.Uuid
   displayName        String?
   licenseNumber      String?
   phone              String?
   identityVerifiedAt DateTime?
-  createdAt          DateTime   @default(now())
+  createdAt          DateTime     @default(now())
   deletedAt          DateTime?
-  deletedById        String?    @db.Uuid
+  deletedById        String?      @db.Uuid
   organization       Organization @relation(fields: [organizationId], references: [id])
-  user               User?      @relation(fields: [userId], references: [id])
+  user               User?        @relation(fields: [userId], references: [id])
   vehicles           Vehicle[]
   trips              Trip[]
 
@@ -347,19 +353,19 @@ model DriverProfile {
 }
 
 model Vehicle {
-  id                String          @id @default(uuid()) @db.Uuid
-  organizationId    String          @db.Uuid
-  plateNumber       String
-  vehicleType       VehicleType
-  ownershipType     OwnershipType   @default(OWNED)
-  defaultDriverId   String?         @db.Uuid
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  deletedAt         DateTime?
-  deletedById       String?         @db.Uuid
-  organization      Organization    @relation(fields: [organizationId], references: [id])
-  defaultDriver     DriverProfile?  @relation(fields: [defaultDriverId], references: [id])
-  trips             Trip[]
+  id              String         @id @default(uuid()) @db.Uuid
+  organizationId  String         @db.Uuid
+  plateNumber     String
+  vehicleType     VehicleType
+  ownershipType   OwnershipType  @default(OWNED)
+  defaultDriverId String?        @db.Uuid
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+  deletedById     String?        @db.Uuid
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  defaultDriver   DriverProfile? @relation(fields: [defaultDriverId], references: [id])
+  trips           Trip[]
 
   @@unique([organizationId, plateNumber])
   @@index([organizationId, vehicleType])
@@ -367,27 +373,27 @@ model Vehicle {
 }
 
 model BorderGate {
-  id           String   @id @default(uuid()) @db.Uuid
-  name         String   @unique
-  province     String?
-  countrySide  String?
-  isActive     Boolean  @default(true)
-  yards        Yard[]
-  trips        Trip[]
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @unique
+  province    String?
+  countrySide String?
+  isActive    Boolean @default(true)
+  yards       Yard[]
+  trips       Trip[]
 
   @@index([isActive])
   @@map("border_gates")
 }
 
 model Yard {
-  id            String      @id @default(uuid()) @db.Uuid
-  name          String
-  borderGateId  String      @db.Uuid
-  operatorName  String?
-  address       String?
-  isActive      Boolean     @default(true)
-  borderGate    BorderGate  @relation(fields: [borderGateId], references: [id])
-  trips         Trip[]
+  id           String     @id @default(uuid()) @db.Uuid
+  name         String
+  borderGateId String     @db.Uuid
+  operatorName String?
+  address      String?
+  isActive     Boolean    @default(true)
+  borderGate   BorderGate @relation(fields: [borderGateId], references: [id])
+  trips        Trip[]
 
   @@unique([borderGateId, name])
   @@index([borderGateId, isActive])
@@ -395,20 +401,20 @@ model Yard {
 }
 
 model Shipment {
-  id                         String        @id @default(uuid()) @db.Uuid
-  organizationId             String        @db.Uuid
-  cargoOwnerOrganizationId   String?       @db.Uuid
-  description                String?
-  commodityCode              String?
-  quantity                   Decimal?      @db.Decimal(18, 3)
-  unit                       String?
-  weightKg                   Decimal?      @db.Decimal(18, 3)
-  containerNumber            String?
-  sealNumber                 String?
-  createdAt                  DateTime      @default(now())
-  organization               Organization  @relation("OwningOrganizationShipments", fields: [organizationId], references: [id])
-  cargoOwnerOrganization     Organization? @relation("CargoOwnerShipments", fields: [cargoOwnerOrganizationId], references: [id])
-  trips                      Trip[]
+  id                       String        @id @default(uuid()) @db.Uuid
+  organizationId           String        @db.Uuid
+  cargoOwnerOrganizationId String?       @db.Uuid
+  description              String?
+  commodityCode            String?
+  quantity                 Decimal?      @db.Decimal(18, 3)
+  unit                     String?
+  weightKg                 Decimal?      @db.Decimal(18, 3)
+  containerNumber          String?
+  sealNumber               String?
+  createdAt                DateTime      @default(now())
+  organization             Organization  @relation("OwningOrganizationShipments", fields: [organizationId], references: [id])
+  cargoOwnerOrganization   Organization? @relation("CargoOwnerShipments", fields: [cargoOwnerOrganizationId], references: [id])
+  trips                    Trip[]
 
   @@index([organizationId])
   @@index([cargoOwnerOrganizationId])
@@ -417,27 +423,27 @@ model Shipment {
 }
 
 model CustomsDeclaration {
-  id                   String             @id @default(uuid()) @db.Uuid
-  organizationId       String             @db.Uuid
-  declarationNumber    String
-  declarationType      DeclarationType
-  customsOfficeCode    String?
-  status               DeclarationStatus  @default(DRAFT)
-  sourceProvider       IntegrationProvider?
-  sourceExternalId     String?
-  sourceStatus         String?
-  sourceUpdatedAt      DateTime?
-  sourceObservedAt     DateTime?
-  lastIngestedAt       DateTime?
-  latestSyncRunId      String?            @db.Uuid
-  normalizedSummary    Json?
-  sourceSnapshot       Json?
-  submittedAt          DateTime?
-  approvedAt           DateTime?
-  rejectedAt           DateTime?
-  createdAt            DateTime           @default(now())
-  organization         Organization       @relation(fields: [organizationId], references: [id])
-  trips                Trip[]
+  id                String               @id @default(uuid()) @db.Uuid
+  organizationId    String               @db.Uuid
+  declarationNumber String
+  declarationType   DeclarationType
+  customsOfficeCode String?
+  status            DeclarationStatus    @default(DRAFT)
+  sourceProvider    IntegrationProvider?
+  sourceExternalId  String?
+  sourceStatus      String?
+  sourceUpdatedAt   DateTime?
+  sourceObservedAt  DateTime?
+  lastIngestedAt    DateTime?
+  latestSyncRunId   String?              @db.Uuid
+  normalizedSummary Json?
+  sourceSnapshot    Json?
+  submittedAt       DateTime?
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
+  createdAt         DateTime             @default(now())
+  organization      Organization         @relation(fields: [organizationId], references: [id])
+  trips             Trip[]
 
   @@unique([organizationId, declarationNumber])
   @@index([organizationId, status])
@@ -448,38 +454,38 @@ model CustomsDeclaration {
 }
 
 model Trip {
-  id                       String               @id @default(uuid()) @db.Uuid
-  organizationId           String               @db.Uuid
-  tripCode                 String
-  tripType                 TripType
-  direction                TripDirection        @default(UNKNOWN)
-  vehicleId                String?              @db.Uuid
-  driverProfileId          String?              @db.Uuid
-  shipmentId               String?              @db.Uuid
-  customsDeclarationId     String?              @db.Uuid
-  borderGateId             String?              @db.Uuid
-  yardId                   String?              @db.Uuid
-  plannedStartAt           DateTime?
-  plannedArrivalAt         DateTime?
-  currentStatus            TripStatus           @default(PLANNED)
-  currentStatusUpdatedAt   DateTime?
-  createdById              String?              @db.Uuid
-  createdAt                DateTime             @default(now())
-  updatedAt                DateTime             @updatedAt
-  deletedAt                DateTime?
-  deletedById              String?              @db.Uuid
-  organization             Organization         @relation(fields: [organizationId], references: [id])
-  vehicle                  Vehicle?             @relation(fields: [vehicleId], references: [id])
-  driverProfile            DriverProfile?       @relation(fields: [driverProfileId], references: [id])
-  shipment                 Shipment?            @relation(fields: [shipmentId], references: [id])
-  customsDeclaration       CustomsDeclaration?  @relation(fields: [customsDeclarationId], references: [id])
-  borderGate               BorderGate?          @relation(fields: [borderGateId], references: [id])
-  yard                     Yard?                @relation(fields: [yardId], references: [id])
-  createdBy                User?                @relation("TripCreatedBy", fields: [createdById], references: [id])
-  participants             TripParticipant[]
-  events                   TripEvent[]
-  mediaAttachments         TripMediaAttachment[]
-  notifications            Notification[]
+  id                     String                @id @default(uuid()) @db.Uuid
+  organizationId         String                @db.Uuid
+  tripCode               String
+  tripType               TripType
+  direction              TripDirection         @default(UNKNOWN)
+  vehicleId              String?               @db.Uuid
+  driverProfileId        String?               @db.Uuid
+  shipmentId             String?               @db.Uuid
+  customsDeclarationId   String?               @db.Uuid
+  borderGateId           String?               @db.Uuid
+  yardId                 String?               @db.Uuid
+  plannedStartAt         DateTime?
+  plannedArrivalAt       DateTime?
+  currentStatus          TripStatus            @default(PLANNED)
+  currentStatusUpdatedAt DateTime?
+  createdById            String?               @db.Uuid
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  deletedAt              DateTime?
+  deletedById            String?               @db.Uuid
+  organization           Organization          @relation(fields: [organizationId], references: [id])
+  vehicle                Vehicle?              @relation(fields: [vehicleId], references: [id])
+  driverProfile          DriverProfile?        @relation(fields: [driverProfileId], references: [id])
+  shipment               Shipment?             @relation(fields: [shipmentId], references: [id])
+  customsDeclaration     CustomsDeclaration?   @relation(fields: [customsDeclarationId], references: [id])
+  borderGate             BorderGate?           @relation(fields: [borderGateId], references: [id])
+  yard                   Yard?                 @relation(fields: [yardId], references: [id])
+  createdBy              User?                 @relation("TripCreatedBy", fields: [createdById], references: [id])
+  participants           TripParticipant[]
+  events                 TripEvent[]
+  mediaAttachments       TripMediaAttachment[]
+  notifications          Notification[]
 
   @@unique([organizationId, tripCode])
   @@index([organizationId, currentStatus, plannedStartAt])
@@ -491,16 +497,16 @@ model Trip {
 }
 
 model TripParticipant {
-  id               String               @id @default(uuid()) @db.Uuid
-  tripId           String               @db.Uuid
-  organizationId   String?              @db.Uuid
-  userId           String?              @db.Uuid
-  role             TripParticipantRole
-  visibilityLevel  VisibilityLevel      @default(OPERATIONAL)
-  createdAt        DateTime             @default(now())
-  trip             Trip                 @relation(fields: [tripId], references: [id])
-  organization     Organization?        @relation(fields: [organizationId], references: [id])
-  user             User?                @relation(fields: [userId], references: [id])
+  id              String              @id @default(uuid()) @db.Uuid
+  tripId          String              @db.Uuid
+  organizationId  String?             @db.Uuid
+  userId          String?             @db.Uuid
+  role            TripParticipantRole
+  visibilityLevel VisibilityLevel     @default(OPERATIONAL)
+  createdAt       DateTime            @default(now())
+  trip            Trip                @relation(fields: [tripId], references: [id])
+  organization    Organization?       @relation(fields: [organizationId], references: [id])
+  user            User?               @relation(fields: [userId], references: [id])
 
   @@index([tripId, role])
   @@index([organizationId])
@@ -509,26 +515,27 @@ model TripParticipant {
 }
 
 model TripEvent {
-  id              String            @id @default(uuid()) @db.Uuid
-  tripId          String            @db.Uuid
-  organizationId  String            @db.Uuid
-  eventType       TripEventType
-  eventStatus     TripEventStatus   @default(RECORDED)
-  source          TripEventSource
-  sourceRef       String?
-  idempotencyKey  String?
-  occurredAt      DateTime
-  recordedAt      DateTime          @default(now())
-  createdById     String?           @db.Uuid
-  confidence      Decimal?          @db.Decimal(5, 2)
-  note            String?
-  rawPayload      Json?
-  trip            Trip              @relation(fields: [tripId], references: [id])
-  organization    Organization      @relation(fields: [organizationId], references: [id])
-  createdBy       User?             @relation("TripEventCreatedBy", fields: [createdById], references: [id])
+  id               String                @id @default(uuid()) @db.Uuid
+  tripId           String                @db.Uuid
+  organizationId   String                @db.Uuid
+  eventType        TripEventType
+  eventStatus      TripEventStatus       @default(RECORDED)
+  source           TripEventSource
+  sourceRef        String?
+  idempotencyKey   String?
+  isCorrection     Boolean               @default(false)
+  occurredAt       DateTime
+  recordedAt       DateTime              @default(now())
+  createdById      String?               @db.Uuid
+  confidence       Decimal?              @db.Decimal(5, 2)
+  note             String?
+  rawPayload       Json?
+  trip             Trip                  @relation(fields: [tripId], references: [id])
+  organization     Organization          @relation(fields: [organizationId], references: [id])
+  createdBy        User?                 @relation("TripEventCreatedBy", fields: [createdById], references: [id])
   mediaAttachments TripMediaAttachment[]
 
-  @@unique([idempotencyKey])
+  @@unique([organizationId, idempotencyKey])
   @@index([tripId, occurredAt])
   @@index([tripId, recordedAt(sort: Desc)])
   @@index([organizationId, eventType, occurredAt])
@@ -537,12 +544,19 @@ model TripEvent {
 }
 
 model IntegrationAccount {
-  id                    String                @id @default(uuid()) @db.Uuid
-  organizationId        String                @db.Uuid
+  id                    String               @id @default(uuid()) @db.Uuid
+  organizationId        String               @db.Uuid
   provider              IntegrationProvider
   displayName           String
-  status                IntegrationStatus     @default(PENDING)
+  status                IntegrationStatus    @default(PENDING)
   encryptedCredentials  String?
+  cron                  String?
+  timezone              String?              @default("Asia/Ho_Chi_Minh")
+  manualOnly            Boolean              @default(false)
+  debugMode             Boolean              @default(false)
+  maxRequestsPerSecond  Int?
+  maxRunDurationSeconds Int?
+  lastFiredAt           DateTime?
   lastSyncAt            DateTime?
   lastListScannedAt     DateTime?
   lastDetailRefreshedAt DateTime?
@@ -550,14 +564,14 @@ model IntegrationAccount {
   lastErrorAt           DateTime?
   nextRetryAt           DateTime?
   syncLagSeconds        Int?
-  consecutiveFailures   Int                   @default(0)
+  consecutiveFailures   Int                  @default(0)
   lastErrorMessage      String?
   syncLockOwner         String?
   syncLockExpiresAt     DateTime?
-  createdAt             DateTime              @default(now())
+  createdAt             DateTime             @default(now())
   deletedAt             DateTime?
-  deletedById           String?               @db.Uuid
-  organization          Organization          @relation(fields: [organizationId], references: [id])
+  deletedById           String?              @db.Uuid
+  organization          Organization         @relation(fields: [organizationId], references: [id])
   syncRuns              IntegrationSyncRun[]
 
   @@unique([organizationId, provider, displayName])
@@ -571,44 +585,70 @@ model IntegrationSyncRun {
   id                   String                   @id @default(uuid()) @db.Uuid
   organizationId       String                   @db.Uuid
   integrationAccountId String                   @db.Uuid
-  status               IntegrationSyncRunStatus @default(RUNNING)
+  status               IntegrationSyncRunStatus @default(QUEUED)
   mode                 String                   @default("AUTO")
+  attemptIndex         Int                      @default(0)
+  attemptGroupId       String                   @db.Uuid
   startedAt            DateTime                 @default(now())
   finishedAt           DateTime?
   recordsFetched       Int                      @default(0)
+  recordsRejected      Int                      @default(0)
   detailsFetched       Int                      @default(0)
   eventsCreated        Int                      @default(0)
   eventsSkipped        Int                      @default(0)
+  errorCode            String?
   errorMessage         String?
+  httpStatus           Int?
+  nextRetryAt          DateTime?
   metadata             Json?
   organization         Organization             @relation(fields: [organizationId], references: [id])
   integrationAccount   IntegrationAccount       @relation(fields: [integrationAccountId], references: [id])
+  syncLogs             IntegrationSyncLog[]
 
   @@index([organizationId, startedAt])
   @@index([integrationAccountId, startedAt])
+  @@index([integrationAccountId, status])
   @@index([status, startedAt])
+  @@index([nextRetryAt])
   @@map("integration_sync_runs")
 }
 
+model IntegrationSyncLog {
+  id               String             @id @default(uuid()) @db.Uuid
+  organizationId   String             @db.Uuid
+  syncRunId        String             @db.Uuid
+  level            String
+  code             String?
+  message          String
+  sourceReference  String?
+  rawPayloadMasked Json?
+  createdAt        DateTime           @default(now())
+  syncRun          IntegrationSyncRun @relation(fields: [syncRunId], references: [id])
+
+  @@index([organizationId, syncRunId, createdAt])
+  @@index([organizationId, code, createdAt])
+  @@map("integration_sync_logs")
+}
+
 model TripMediaAttachment {
-  id              String         @id @default(uuid()) @db.Uuid
-  organizationId  String         @db.Uuid
-  tripId          String         @db.Uuid
-  tripEventId     String?        @db.Uuid
-  uploadedById    String?        @db.Uuid
-  mediaType       TripMediaType
-  fileName        String
-  mimeType        String?
-  storagePath     String?
-  publicUrl       String?
-  sizeBytes       Int?
-  message         String?
-  metadata        Json?
-  createdAt       DateTime       @default(now())
-  organization    Organization   @relation(fields: [organizationId], references: [id])
-  trip            Trip           @relation(fields: [tripId], references: [id])
-  tripEvent       TripEvent?     @relation(fields: [tripEventId], references: [id])
-  uploadedBy      User?          @relation("TripMediaAttachmentUploadedBy", fields: [uploadedById], references: [id])
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  tripId         String        @db.Uuid
+  tripEventId    String?       @db.Uuid
+  uploadedById   String?       @db.Uuid
+  mediaType      TripMediaType
+  fileName       String
+  mimeType       String?
+  storagePath    String?
+  publicUrl      String?
+  sizeBytes      Int?
+  message        String?
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  trip           Trip          @relation(fields: [tripId], references: [id])
+  tripEvent      TripEvent?    @relation(fields: [tripEventId], references: [id])
+  uploadedBy     User?         @relation("TripMediaAttachmentUploadedBy", fields: [uploadedById], references: [id])
 
   @@index([organizationId, createdAt])
   @@index([tripId, createdAt])
@@ -618,37 +658,48 @@ model TripMediaAttachment {
 }
 
 model NotificationRule {
-  id                  String                 @id @default(uuid()) @db.Uuid
-  organizationId      String                 @db.Uuid
-  name                String
-  eventType           TripEventType?
-  condition           Json?
-  channels            NotificationChannel[]
-  recipientStrategy   Json?
-  isActive            Boolean                @default(true)
-  organization        Organization           @relation(fields: [organizationId], references: [id])
+  id                String                @id @default(uuid()) @db.Uuid
+  organizationId    String                @db.Uuid
+  name              String
+  eventType         String
+  condition         Json?
+  channels          NotificationChannel[]
+  recipientStrategy Json?
+  recipientScope    String
+  customUserIds     String[]              @default([])
+  mandatory         Boolean               @default(false)
+  enabled           Boolean               @default(true)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  deletedAt         DateTime?
+  organization      Organization          @relation(fields: [organizationId], references: [id])
 
-  @@index([organizationId, isActive])
+  @@index([organizationId, eventType, enabled])
   @@map("notification_rules")
 }
 
 model Notification {
-  id                String               @id @default(uuid()) @db.Uuid
-  organizationId    String               @db.Uuid
-  tripId            String?              @db.Uuid
-  recipientUserId   String?              @db.Uuid
-  channel           NotificationChannel
-  status            NotificationStatus   @default(PENDING)
-  payload           Json?
-  sentAt            DateTime?
-  failedAt          DateTime?
-  readAt            DateTime?
-  errorMessage      String?
-  createdAt         DateTime             @default(now())
-  organization      Organization         @relation(fields: [organizationId], references: [id])
-  trip              Trip?                @relation(fields: [tripId], references: [id])
-  recipientUser     User?                @relation(fields: [recipientUserId], references: [id])
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @db.Uuid
+  tripId             String?             @db.Uuid
+  recipientUserId    String?             @db.Uuid
+  notificationRuleId String?             @db.Uuid
+  eventId            String?             @db.Uuid
+  channel            NotificationChannel
+  status             NotificationStatus  @default(PENDING)
+  payload            Json?
+  payloadDigest      String?
+  sentAt             DateTime?
+  failedAt           DateTime?
+  readAt             DateTime?
+  errorMessage       String?
+  failureReason      String?
+  createdAt          DateTime            @default(now())
+  organization       Organization        @relation(fields: [organizationId], references: [id])
+  trip               Trip?               @relation(fields: [tripId], references: [id])
+  recipientUser      User?               @relation(fields: [recipientUserId], references: [id])
 
+  @@unique([eventId, recipientUserId, channel])
   @@index([recipientUserId, status, createdAt])
   @@index([recipientUserId, channel, status, createdAt(sort: Desc)])
   @@index([organizationId, status])
@@ -657,22 +708,41 @@ model Notification {
 }
 
 model AuditLog {
-  id              String        @id @default(uuid()) @db.Uuid
-  organizationId  String?       @db.Uuid
-  actorUserId     String?       @db.Uuid
-  action          String
-  entityType      String
-  entityId        String?
-  before          Json?
-  after           Json?
-  ipAddress       String?
-  userAgent       String?
-  createdAt       DateTime      @default(now())
-  organization    Organization? @relation(fields: [organizationId], references: [id])
-  actorUser       User?         @relation(fields: [actorUserId], references: [id])
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String?       @db.Uuid
+  actorUserId    String?       @db.Uuid
+  action         String
+  // entityType is a free-text string. Expected values include domain entities such as
+  // TRIP, TRIP_EVENT, MEMBERSHIP, INTEGRATION_ACCOUNT, NOTIFICATION_RULE,
+  // INTEGRATION_DEBUG_MODE, etc. No enum constraint at the DB level; callers must
+  // pass canonical values.
+  entityType     String
+  entityId       String?
+  before         Json?
+  after          Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime      @default(now())
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  actorUser      User?         @relation(fields: [actorUserId], references: [id])
 
   @@index([organizationId, createdAt])
   @@index([actorUserId, createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+model NotificationPreference {
+  id             String              @id @default(uuid()) @db.Uuid
+  userId         String              @db.Uuid
+  organizationId String              @db.Uuid
+  eventType      String
+  channel        NotificationChannel
+  enabled        Boolean             @default(true)
+  updatedAt      DateTime            @updatedAt
+  user           User                @relation(fields: [userId], references: [id])
+
+  @@unique([userId, organizationId, eventType, channel])
+  @@index([userId])
+  @@map("notification_preferences")
 }

@@ -11,9 +11,13 @@ import type {
   ApiCuaKhauSoSyncResult,
   ApiDashboardSummary,
   ApiIntegrationSyncRun,
+  ApiIntegrationSyncRunsPage,
   ApiMembership,
   ApiMembershipInvitation,
   ApiNotification,
+  ApiNotificationListPage,
+  ApiNotificationPreference,
+  ApiNotificationRule,
   ApiOrganization,
   ApiTripDetail,
   ApiTripEvent,
@@ -28,11 +32,14 @@ import type {
   CreateVehiclePayload,
   InviteMembershipPayload,
   ListCuaKhauSoDeclarationsParams,
+  ListIntegrationSyncRunsParams,
+  ListNotificationsParams,
   ListTripsParams,
   SyncCuaKhauSoDeclarationPayload,
   UpdateDriverPayload,
   UpdateMembershipPayload,
-  UpdateVehiclePayload
+  UpdateVehiclePayload,
+  UpsertNotificationPreferencesPayload
 } from '@/lib/api/types';
 
 type AuthenticatedOptions = {
@@ -71,11 +78,68 @@ export const gatesyncApi = {
 
   listNotifications: (options: AuthenticatedOptions & { after?: string }) => {
     const params = options.after ? `?after=${encodeURIComponent(options.after)}` : '';
-    return apiClient.get<ApiNotification[]>(`/notifications${params}`, { accessToken: options.accessToken });
+    return apiClient.get<ApiNotification[]>(`/notifications${params}`, {
+      accessToken: options.accessToken
+    });
+  },
+
+  /**
+   * Cursor-paginated `GET /api/v1/notifications`.
+   *
+   * Returns `{ data, nextCursor }` per the v1 contract. Pass `nextCursor` from
+   * a previous page back as `params.cursor` to load the next page. Used by
+   * `NotificationCenter` for TanStack Query infinite scroll.
+   */
+  listNotificationsPage: (options: AuthenticatedOptions & { params?: ListNotificationsParams }) => {
+    const searchParams = new URLSearchParams();
+    const params = options.params ?? {};
+
+    if (params.cursor) {
+      searchParams.set('cursor', params.cursor);
+    }
+    if (params.limit !== undefined) {
+      searchParams.set('limit', String(params.limit));
+    }
+    if (params.channel) {
+      searchParams.set('channel', params.channel);
+    }
+    if (params.status) {
+      searchParams.set('status', params.status);
+    }
+    if (params.eventType) {
+      searchParams.set('eventType', params.eventType);
+    }
+    if (params.after) {
+      searchParams.set('after', params.after);
+    }
+
+    const query = searchParams.toString();
+
+    return apiClient.get<ApiNotificationListPage>(`/notifications${query ? `?${query}` : ''}`, {
+      accessToken: options.accessToken
+    });
   },
 
   markNotificationRead: (notificationId: string, { accessToken }: AuthenticatedOptions) =>
     apiClient.patch<ApiNotification>(`/notifications/${notificationId}/read`, {}, { accessToken }),
+
+  /**
+   * Lifecycle endpoint: `POST /api/v1/notifications/:id/read` (self-only).
+   *
+   * Per task 12.2 spec wording, the canonical mark-read action uses POST.
+   * The legacy `PATCH .../read` route remains for backwards compatibility
+   * but new UI code should call this method.
+   */
+  markNotificationReadV2: (notificationId: string, { accessToken }: AuthenticatedOptions) =>
+    apiClient.post<ApiNotification>(`/notifications/${notificationId}/read`, {}, { accessToken }),
+
+  /**
+   * Lifecycle endpoint: `POST /api/v1/notifications/:id/hide` (self-only).
+   *
+   * Removes the notification from the user's inbox without deleting the row.
+   */
+  hideNotification: (notificationId: string, { accessToken }: AuthenticatedOptions) =>
+    apiClient.post<ApiNotification>(`/notifications/${notificationId}/hide`, {}, { accessToken }),
 
   markAllNotificationsRead: ({ accessToken }: AuthenticatedOptions) =>
     apiClient.patch<{ count: number }>('/notifications/read-all', {}, { accessToken }),
@@ -200,6 +264,24 @@ export const gatesyncApi = {
         accessToken
       }
     ),
+
+  listIntegrationSyncRuns: (
+    params: ListIntegrationSyncRunsParams,
+    { accessToken }: AuthenticatedOptions
+  ) => {
+    const searchParams = new URLSearchParams();
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        searchParams.set(key, String(value));
+      }
+    });
+
+    const query = searchParams.toString();
+    const path = query ? `/integration-sync-runs?${query}` : '/integration-sync-runs';
+
+    return apiClient.get<ApiIntegrationSyncRunsPage>(path, { accessToken });
+  },
 
   runCuaKhauSoSyncNow: (organizationId: string, { accessToken }: AuthenticatedOptions) =>
     apiClient.post<ApiCuaKhauSoSyncRunResult>(
@@ -334,5 +416,45 @@ export const gatesyncApi = {
           'Idempotency-Key': idempotencyKey
         }
       }
-    )
+    ),
+
+  listNotificationRules: (organizationId: string, { accessToken }: AuthenticatedOptions) =>
+    apiClient.get<ApiNotificationRule[]>(
+      `/notification-rules?organizationId=${encodeURIComponent(organizationId)}`,
+      { accessToken }
+    ),
+
+  getNotificationRule: (ruleId: string, { accessToken }: AuthenticatedOptions) =>
+    apiClient.get<ApiNotificationRule>(`/notification-rules/${ruleId}`, { accessToken }),
+
+  createNotificationRule: (
+    payload: Record<string, unknown> & { organizationId: string },
+    { accessToken }: AuthenticatedOptions
+  ) => apiClient.post<ApiNotificationRule>('/notification-rules', payload, { accessToken }),
+
+  updateNotificationRule: (
+    ruleId: string,
+    payload: Record<string, unknown>,
+    { accessToken }: AuthenticatedOptions
+  ) =>
+    apiClient.patch<ApiNotificationRule>(`/notification-rules/${ruleId}`, payload, {
+      accessToken
+    }),
+
+  deleteNotificationRule: (ruleId: string, { accessToken }: AuthenticatedOptions) =>
+    apiClient.delete<ApiNotificationRule>(`/notification-rules/${ruleId}`, { accessToken }),
+
+  listMyNotificationPreferences: (organizationId: string, { accessToken }: AuthenticatedOptions) =>
+    apiClient.get<ApiNotificationPreference[]>(
+      `/me/notification-preferences?organizationId=${encodeURIComponent(organizationId)}`,
+      { accessToken }
+    ),
+
+  upsertMyNotificationPreferences: (
+    payload: UpsertNotificationPreferencesPayload,
+    { accessToken }: AuthenticatedOptions
+  ) =>
+    apiClient.put<ApiNotificationPreference[]>('/me/notification-preferences', payload, {
+      accessToken
+    })
 };

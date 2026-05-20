@@ -20,6 +20,7 @@ import { CuaKhauSoSessionStore } from './cua-khau-so-session.store';
     CuaKhauSoPollingService,
     CuaKhauSoService,
     CuaKhauSoSessionStore
-  ]
+  ],
+  exports: [CuaKhauSoMapper]
 })
 export class CuaKhauSoModule {}

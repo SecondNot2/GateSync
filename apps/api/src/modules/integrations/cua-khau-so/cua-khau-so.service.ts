@@ -6,7 +6,7 @@ import {
   UnauthorizedException
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import type {
   DeclarationStatus,
   DeclarationType,
@@ -759,7 +759,15 @@ export class CuaKhauSoService {
       data: {
         organizationId: account.organizationId,
         integrationAccountId: account.id,
-        mode
+        mode,
+        // Legacy CKS sync flow does not retry on the same run — one
+        // attempt group per run mirrors the semantics introduced by
+        // task 1.2 for the new `Sync_Worker` pipeline. The new pipeline
+        // (`SyncSchedulerService`) already supplies its own
+        // `randomUUID()` for `attemptGroupId`; matching that here keeps
+        // both flows consistent and unblocks `IntegrationSyncRun.create`
+        // now that the column is `NOT NULL`.
+        attemptGroupId: randomUUID()
       }
     });
 
